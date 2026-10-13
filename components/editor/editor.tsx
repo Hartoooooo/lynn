@@ -105,7 +105,10 @@ export function Editor({
       },
     },
     onUpdate({ editor }) {
-      handlers.current.onChange?.(editor.getJSON(), editor.getText({ blockSeparator: "\n" }));
+      // ProseMirror legt attrs als Objekte ohne Prototyp an; Server Actions verwerfen diese
+      // beim Serialisieren (z. B. Bild-src). Daher in plain objects umwandeln.
+      const json = JSON.parse(JSON.stringify(editor.getJSON())) as JSONContent;
+      handlers.current.onChange?.(json, editor.getText({ blockSeparator: "\n" }));
     },
   });
 
