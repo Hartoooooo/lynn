@@ -288,3 +288,12 @@ mark.hit {
   background: var(--surface-3);
   color: var(--text);
 }
+
+.prose-lynn a.file-download {
+  color: var(--text-2);
+  text-decoration: none;
+}
+
+.prose-lynn a.file-download:hover {
+  color: var(--text);
+}

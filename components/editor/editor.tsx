@@ -18,6 +18,7 @@ import {
   List,
   ListOrdered,
   Minus,
+  Paperclip,
   Quote,
   Strikethrough,
   Table,
@@ -26,6 +27,7 @@ import {
 import type { JSONContent } from "@tiptap/core";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+import { ATTACHMENT_ACCEPT, ATTACHMENT_TYPES, attachmentExtension, FileAttachment } from "./file-attachment";
 
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
 
@@ -36,6 +38,27 @@ async function uploadImage(entryId: string, file: File) {
   const path = `entries/${entryId}/${crypto.randomUUID()}.${ext}`;
   const supabase = createClient();
   const { error } = await supabase.storage.from("media").upload(path, file, { contentType: file.type });
+  if (error) throw error;
+  return `/media/${path}`;
+}
+
+/** Lädt eine Excel-/CSV-Datei hoch; der Originalname bleibt im Pfad für den Download erhalten. */
+async function uploadAttachment(entryId: string, file: File) {
+  const ext = attachmentExtension(file.name);
+  if (!ext) throw new Error("Erlaubt sind Bilder sowie Excel- und CSV-Dateien (.xlsx, .xls, .xlsm, .csv)");
+  if (file.size > 25 * 1024 * 1024) throw new Error("Datei ist größer als 25 MB");
+  const base = file.name
+    .slice(0, -(ext.length + 1))
+    .replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue")
+    .replace(/Ä/g, "Ae").replace(/Ö/g, "Oe").replace(/Ü/g, "Ue").replace(/ß/g, "ss")
+    .replace(/[^A-Za-z0-9._-]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 80) || "datei";
+  const path = `entries/${entryId}/${crypto.randomUUID()}-${base}.${ext}`;
+  const supabase = createClient();
+  const { error } = await supabase.storage
+    .from("media")
+    .upload(path, file, { contentType: ATTACHMENT_TYPES[ext] });
   if (error) throw error;
   return `/media/${path}`;
 }
@@ -54,16 +77,23 @@ export function Editor({
   onError?: (message: string) => void;
 }) {
   const fileInput = useRef<HTMLInputElement>(null);
+  const attachmentInput = useRef<HTMLInputElement>(null);
   const handlers = useRef({ onChange, onError });
   handlers.current = { onChange, onError };
 
   const insertFiles = async (editor: TiptapEditor, files: File[], pos?: number) => {
-    for (const file of files.filter((f) => f.type.startsWith("image/"))) {
+    for (const file of files) {
       try {
-        const src = await uploadImage(entryId, file);
+        const isImage = file.type.startsWith("image/");
+        const node = isImage
+          ? { type: "image", attrs: { src: await uploadImage(entryId, file), alt: file.name } }
+          : {
+              type: "fileAttachment",
+              attrs: { src: await uploadAttachment(entryId, file), name: file.name, size: file.size },
+            };
         const chain = editor.chain().focus();
-        if (pos !== undefined) chain.insertContentAt(pos, { type: "image", attrs: { src, alt: file.name } });
-        else chain.setImage({ src, alt: file.name });
+        if (pos !== undefined) chain.insertContentAt(pos, node);
+        else chain.insertContent(node);
         chain.run();
       } catch (err) {
         handlers.current.onError?.(err instanceof Error ? err.message : "Upload fehlgeschlagen");
@@ -83,8 +113,9 @@ export function Editor({
         link: { openOnClick: !editable, autolink: true, defaultProtocol: "https" },
       }),
       Image.configure({ inline: false }),
+      FileAttachment,
       TableKit.configure({ table: { resizable: false } }),
-      Placeholder.configure({ placeholder: "Schreib los … Bilder einfach hineinziehen oder einfügen." }),
+      Placeholder.configure({ placeholder: "Schreib los … Bilder und Excel-Dateien einfach hineinziehen oder einfügen." }),
     ],
     editorProps: {
       attributes: { class: "prose-lynn", id: "entry-content" },
@@ -122,7 +153,13 @@ export function Editor({
 
   return (
     <div>
-      {editable && <Toolbar editor={editor} onImage={() => fileInput.current?.click()} />}
+      {editable && (
+        <Toolbar
+          editor={editor}
+          onImage={() => fileInput.current?.click()}
+          onAttachment={() => attachmentInput.current?.click()}
+        />
+      )}
       <EditorContent editor={editor} />
       <input
         ref={fileInput}
@@ -136,11 +173,31 @@ export function Editor({
           void insertFiles(editor, files);
         }}
       />
+      <input
+        ref={attachmentInput}
+        type="file"
+        accept={ATTACHMENT_ACCEPT}
+        multiple
+        hidden
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
+          e.target.value = "";
+          void insertFiles(editor, files);
+        }}
+      />
     </div>
   );
 }
 
-function Toolbar({ editor, onImage }: { editor: TiptapEditor; onImage: () => void }) {
+function Toolbar({
+  editor,
+  onImage,
+  onAttachment,
+}: {
+  editor: TiptapEditor;
+  onImage: () => void;
+  onAttachment: () => void;
+}) {
   const state = useEditorState({
     editor,
     selector: ({ editor: e }) => ({
@@ -214,6 +271,7 @@ function Toolbar({ editor, onImage }: { editor: TiptapEditor; onImage: () => voi
         <Table size={15} />,
       )}
       {btn("Bild hochladen", false, onImage, <ImagePlus size={16} />)}
+      {btn("Excel-Datei anhängen", false, onAttachment, <Paperclip size={15} />)}
     </div>
   );
 }
