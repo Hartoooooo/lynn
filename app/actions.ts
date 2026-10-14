@@ -351,6 +351,45 @@ export async function swapShifts(input: {
   return { ok: true, version: data as number };
 }
 
+/** Direktes Setzen einer Schicht (Laurens darf jede Schicht beliebig eintragen). */
+export async function setShift(input: {
+  weekId: string;
+  person: string;
+  day: number;
+  value: string | null;
+  version: number;
+}): Promise<SwapResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { ok: false, kind: "auth", message: "Nicht angemeldet oder noch nicht freigegeben – bitte Admin fragen." };
+  }
+  const { data, error } = await supabase.rpc("roster_set_shift", {
+    week: input.weekId,
+    person: input.person,
+    day: input.day,
+    value: input.value ?? "",
+    expected_version: input.version,
+  });
+  if (error) {
+    if (error.message.includes("version_conflict")) {
+      return {
+        ok: false,
+        kind: "conflict",
+        message: "Jemand anderes hat gerade gespeichert – bitte Seite neu laden und erneut versuchen.",
+      };
+    }
+    if (error.message.includes("not_authenticated")) {
+      return { ok: false, kind: "auth", message: "Nicht angemeldet oder noch nicht freigegeben – bitte Admin fragen." };
+    }
+    return { ok: false, kind: "other", message: error.message };
+  }
+  revalidatePath("/personal");
+  return { ok: true, version: data as number };
+}
+
 export async function parseRosterFile(formData: FormData) {
   await requireAdmin();
   const file = formData.get("file");

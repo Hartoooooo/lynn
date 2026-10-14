@@ -19,9 +19,15 @@ import {
 import { cn, timeAgo } from "@/lib/utils";
 import { HaEditDialog, HaRows, type HaEdit } from "./ha-section";
 import { ImportDialog } from "./import-dialog";
+import { ShiftEditDialog } from "./shift-edit";
 import { SwapLine, SwapSheet } from "./swap-sheet";
 
 const WHO_KEY = "lynn.roster.who";
+
+/** Laurens darf jede Schicht direkt setzen (unabhängig von Groß-/Kleinschreibung). */
+function isLaurens(who: string) {
+  return who.trim().toLowerCase().startsWith("laurens");
+}
 
 function todayLabel() {
   return new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Europe/Berlin" }).format(
@@ -49,6 +55,7 @@ export function RosterView({
   const [who, setWho] = useState<string>("");
   const [version, setVersion] = useState(initialVersion);
   const [sheet, setSheet] = useState<{ day: number } | null>(null);
+  const [edit, setEdit] = useState<{ person: string; day: number } | null>(null);
   const [haEdit, setHaEdit] = useState<HaEdit | null>(null);
   const [importOpen, setImportOpen] = useState(false);
 
@@ -113,6 +120,7 @@ export function RosterView({
 
   const week = weeks[idx];
   const today = todayLabel();
+  const laurens = isLaurens(who);
   const rows = useMemo(() => {
     if (!week) return [];
     const ordered = names.filter((n) => n in week.shifts);
@@ -230,6 +238,7 @@ export function RosterView({
                         const value = week.shifts[name]?.[day] ?? null;
                         const style = SHIFT_STYLE[shiftKind(value)];
                         const clickable = mine && isTradeable(value);
+                        const editable = laurens;
                         const content = (
                           <span
                             className="flex h-9 w-full items-center justify-center whitespace-nowrap rounded-lg px-1.5 font-mono text-[12.5px] tabular-nums max-sm:text-[11.5px]"
@@ -240,7 +249,15 @@ export function RosterView({
                         );
                         return (
                           <td key={day} className={cn("p-1", week.dates[day] === today && "bg-surface/60")}>
-                            {clickable ? (
+                            {editable ? (
+                              <button
+                                onClick={() => setEdit({ person: name, day })}
+                                className="block w-full rounded-lg ring-1 ring-accent/60 transition hover:ring-2 hover:ring-accent focus-visible:ring-2"
+                                aria-label={`${name}, ${DAYS_SHORT[day]} ${displayValue(value)} ändern`}
+                              >
+                                {content}
+                              </button>
+                            ) : clickable ? (
                               <button
                                 onClick={() => setSheet({ day })}
                                 className="block w-full rounded-lg ring-1 ring-accent/60 transition hover:ring-2 hover:ring-accent focus-visible:ring-2"
@@ -261,8 +278,26 @@ export function RosterView({
               {haNames.length > 0 && <HaRows week={week} haNames={haNames} who={who} today={today} onEdit={setHaEdit} />}
             </table>
           </div>
+          {laurens && (
+            <p className="mt-2 text-[12.5px] text-faint">Du kannst jede Schicht antippen und beliebig eintragen.</p>
+          )}
           {haNames.includes(who) && (
             <p className="mt-2 text-[12.5px] text-faint">Tippe in der HA-Zeile auf deine Tage, um „von – bis“ einzutragen.</p>
+          )}
+          {edit && week && (
+            <ShiftEditDialog
+              key={`${week.id}-${edit.person}-${edit.day}`}
+              week={week}
+              person={edit.person}
+              day={edit.day}
+              current={week.shifts[edit.person]?.[edit.day] ?? null}
+              version={version}
+              onClose={() => setEdit(null)}
+              onSaved={(v) => {
+                setVersion(v);
+                router.refresh();
+              }}
+            />
           )}
           {haEdit && (
             <HaEditDialog

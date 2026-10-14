@@ -281,6 +281,7 @@ function SwapSummary({ swaps }: { swaps: RosterSwap[] }) {
 }
 
 export function SwapLine({ person, from, to }: { person: string; from: string | null; to: string | null }) {
+  if (!person) return null;
   return (
     <div className="flex flex-wrap items-center gap-2 py-0.5 text-sm">
       <span className="w-24 shrink-0 truncate text-text-2">{person}</span>

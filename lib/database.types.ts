@@ -309,6 +309,10 @@ export type Database = {
       };
       roster_import: { Args: { weeks: Json; names: string[] }; Returns: number };
       roster_set_ha: { Args: { week: string; person: string; day: number; value: string }; Returns: undefined };
+      roster_set_shift: {
+        Args: { week: string; person: string; day: number; value: string; expected_version: number };
+        Returns: number;
+      };
       search_all: {
         Args: { max_results?: number; q: string; topic_filter?: string };
         Returns: {

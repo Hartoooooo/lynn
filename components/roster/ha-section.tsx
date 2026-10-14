@@ -39,12 +39,10 @@ export function HaRows({
   return (
     <tbody>
       <tr className="border-t border-border bg-surface">
-        <th
-          scope="colgroup"
-          colSpan={6}
-          className="sticky left-0 px-3 py-2 text-left text-[11.5px] font-semibold uppercase tracking-[0.08em] text-faint"
-        >
-          Handelsassistenz (HA)
+        <th scope="colgroup" colSpan={6} className="bg-surface p-0 text-left">
+          <div className="sticky left-0 z-10 inline-block bg-surface px-3 py-2 text-[11.5px] font-semibold uppercase tracking-[0.08em] text-faint">
+            Handelsassistenz (HA)
+          </div>
         </th>
       </tr>
       {haNames.map((name) => {
