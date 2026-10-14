@@ -172,6 +172,19 @@ function extractText(node: Json): string {
   return parts.join(node.type === "doc" ? "\n" : " ").replace(/\s+\n/g, "\n").trim();
 }
 
+export async function saveIsinItems(entryId: string, items: { isin: string; addedAt: string }[]) {
+  const { supabase } = await requireEditor();
+  const clean = items
+    .filter((i) => /^[A-Z]{2}[A-Z0-9]{9}[0-9]$/.test(i.isin))
+    .map((i) => ({ isin: i.isin, addedAt: i.addedAt }));
+  const { error } = await supabase
+    .from("entries")
+    .update({ isin_items: clean })
+    .eq("id", entryId)
+    .eq("kind", "isin_filter");
+  if (error) fail(error.message);
+}
+
 // ---------------------------------------------------------------------------
 // Foto per Handy (QR-Code)
 // ---------------------------------------------------------------------------

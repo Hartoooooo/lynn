@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { FileText } from "lucide-react";
 import { EntryView } from "@/components/entry/entry-view";
 import { Toc } from "@/components/entry/toc";
+import { IsinFilterPanel, type IsinItem } from "@/components/editor/isin-filter";
 import type { Version } from "@/components/entry/versions-dialog";
 import { ContactsPanel, type Contact } from "@/components/topic/contacts-panel";
 import { canEdit, getSession } from "@/lib/session";
@@ -32,7 +33,7 @@ export default async function EntryPage({ params, searchParams }: Params) {
   const { data: entry } = await supabase
     .from("entries")
     .select(
-      "id, title, content_json, updated_at, pinned, topic_id, topic:topics(id, name, slug, color, icon), editor:profiles!entries_updated_by_fkey(full_name)",
+      "id, title, content_json, updated_at, pinned, topic_id, kind, isin_items, topic:topics(id, name, slug, color, icon), editor:profiles!entries_updated_by_fkey(full_name)",
     )
     .eq("id", entryId)
     .maybeSingle();
@@ -69,6 +70,16 @@ export default async function EntryPage({ params, searchParams }: Params) {
     <div className="page-grid has-context">
       <div className="min-w-0">
         <EntryView
+          fixed={entry.kind === "isin_filter"}
+          header={
+            entry.kind === "isin_filter" ? (
+              <IsinFilterPanel
+                entryId={entry.id}
+                initialItems={(entry.isin_items ?? []) as unknown as IsinItem[]}
+                canEdit={editable}
+              />
+            ) : null
+          }
           key={entry.id}
           entry={entry}
           topic={entry.topic}

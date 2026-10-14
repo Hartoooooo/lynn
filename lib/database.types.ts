@@ -35,6 +35,8 @@ export type Database = {
           created_at: string;
           created_by: string | null;
           id: string;
+          isin_items: Json;
+          kind: string | null;
           pinned: boolean;
           search_vector: unknown;
           sort_order: number;
@@ -60,6 +62,7 @@ export type Database = {
           content_json?: Json;
           content_text?: string;
           id?: string;
+          isin_items?: Json;
           pinned?: boolean;
           sort_order?: number;
           title?: string;

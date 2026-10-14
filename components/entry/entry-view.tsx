@@ -23,6 +23,8 @@ export function EntryView({
   editorName,
   versions,
   isNew,
+  fixed = false,
+  header,
 }: {
   entry: { id: string; title: string; content_json: Json; updated_at: string; pinned: boolean };
   topic: { id: string; name: string; slug: string; color: string; icon: string };
@@ -32,6 +34,9 @@ export function EntryView({
   editorName: string | null;
   versions: Version[];
   isNew: boolean;
+  /** Fester Eintrag (z. B. ISIN-Filter): nicht löschbar und nicht verschiebbar. */
+  fixed?: boolean;
+  header?: React.ReactNode;
 }) {
   const [title, setTitle] = useState(entry.title);
   const [favorite, setFavorite] = useState(initialFavorite);
@@ -100,6 +105,10 @@ export function EntryView({
           startTransition(() => setEntryPinned(entry.id, !pinned, path));
         },
       },
+    );
+  }
+  if (canEdit && !fixed) {
+    menuItems.push(
       { label: "In anderes Thema verschieben", icon: <FolderInput size={14} />, onSelect: () => setDialog("move") },
       "separator",
       {
@@ -196,6 +205,8 @@ export function EntryView({
           </button>
         </div>
       )}
+
+      {header}
 
       <Editor
         entryId={entry.id}

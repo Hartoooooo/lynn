@@ -1,10 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { mergeAttributes, Node } from "@tiptap/core";
-import { NodeViewWrapper, ReactNodeViewRenderer, type ReactNodeViewProps } from "@tiptap/react";
+import { saveIsinItems } from "@/app/actions";
 import { Check, ClipboardCopy, ListFilter, Plus, Search, Trash2, X } from "lucide-react";
-import { cn } from "@/lib/utils";
 
 export type IsinItem = { isin: string; addedAt: string };
 
@@ -20,69 +18,29 @@ export function toXwatchFilter(isins: string[]) {
   return `a.isincod in (\n${isins.map((i) => `'${i}'`).join(",\n")})`;
 }
 
-declare module "@tiptap/core" {
-  interface Commands<ReturnType> {
-    isinFilter: {
-      insertIsinFilter: () => ReturnType;
-    };
+/** Fester ISIN-Filter eines Eintrags (kind = 'isin_filter'), nicht löschbar. */
+export function IsinFilterPanel({
+  entryId,
+  initialItems,
+  canEdit,
+}: {
+  entryId: string;
+  initialItems: IsinItem[];
+  canEdit: boolean;
+}) {
+  const [items, setItems] = useState<IsinItem[]>(initialItems);
+  const editable = canEdit;
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  function updateAttributes({ items: next }: { items: IsinItem[] }) {
+    const previous = items;
+    setItems(next);
+    setSaveError(null);
+    saveIsinItems(entryId, next).catch(() => {
+      setItems(previous);
+      setSaveError("Speichern fehlgeschlagen – bitte erneut versuchen.");
+    });
   }
-}
-
-/** Block mit einer gepflegten ISIN-Liste und Kopier-Button für den XWATCH-Filter. */
-export const IsinFilter = Node.create({
-  name: "isinFilter",
-  group: "block",
-  atom: true,
-  draggable: true,
-
-  addAttributes() {
-    return {
-      items: {
-        default: [] as IsinItem[],
-        parseHTML: (el) => {
-          try {
-            return JSON.parse(el.getAttribute("data-items") ?? "[]");
-          } catch {
-            return [];
-          }
-        },
-        renderHTML: (attrs) => ({ "data-items": JSON.stringify(attrs.items ?? []) }),
-      },
-    };
-  },
-
-  parseHTML() {
-    return [{ tag: "pre[data-isin-filter]" }];
-  },
-
-  renderHTML({ HTMLAttributes, node }) {
-    const isins = (node.attrs.items as IsinItem[]).map((i) => i.isin);
-    return ["pre", mergeAttributes(HTMLAttributes, { "data-isin-filter": "" }), toXwatchFilter(isins)];
-  },
-
-  // ISINs fließen in content_text ein → über die Suche auffindbar.
-  renderText({ node }) {
-    return `ISIN-Filter: ${(node.attrs.items as IsinItem[]).map((i) => i.isin).join(" ")}`;
-  },
-
-  addCommands() {
-    return {
-      insertIsinFilter:
-        () =>
-        ({ commands }) =>
-          commands.insertContent({ type: this.name, attrs: { items: [] } }),
-    };
-  },
-
-  addNodeView() {
-    return ReactNodeViewRenderer(IsinFilterView);
-  },
-});
-
-function IsinFilterView({ node, updateAttributes, editor, selected }: ReactNodeViewProps) {
-  const rawItems = node.attrs.items as IsinItem[] | undefined;
-  const items = useMemo(() => rawItems ?? [], [rawItems]);
-  const editable = editor.isEditable;
   const [input, setInput] = useState("");
   const [query, setQuery] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
@@ -125,14 +83,8 @@ function IsinFilterView({ node, updateAttributes, editor, selected }: ReactNodeV
   }
 
   return (
-    <NodeViewWrapper className="my-5" data-drag-handle>
-      <div
-        contentEditable={false}
-        className={cn(
-          "not-prose rounded-2xl border bg-surface text-[14px] leading-normal transition-colors",
-          selected ? "border-accent" : "border-border",
-        )}
-      >
+    <section className="mb-8">
+      <div className="rounded-2xl border border-border bg-surface text-[14px] leading-normal">
         <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
           <ListFilter size={16} className="text-accent" />
           <span className="font-medium text-text">ISIN-Filter</span>
@@ -255,6 +207,7 @@ function IsinFilterView({ node, updateAttributes, editor, selected }: ReactNodeV
           </div>
         )}
       </div>
-    </NodeViewWrapper>
+      {saveError && <p className="mt-2 text-sm text-danger">{saveError}</p>}
+    </section>
   );
 }

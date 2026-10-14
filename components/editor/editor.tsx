@@ -16,7 +16,6 @@ import {
   Italic,
   Link2,
   List,
-  ListFilter,
   ListOrdered,
   Minus,
   Paperclip,
@@ -29,7 +28,6 @@ import {
 import type { JSONContent } from "@tiptap/core";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
-import { IsinFilter } from "./isin-filter";
 import { MobileUploadDialog } from "./mobile-upload-dialog";
 import { ATTACHMENT_ACCEPT, ATTACHMENT_TYPES, attachmentExtension, FileAttachment } from "./file-attachment";
 
@@ -119,7 +117,6 @@ export function Editor({
       }),
       Image.configure({ inline: false }),
       FileAttachment,
-      IsinFilter,
       TableKit.configure({ table: { resizable: false } }),
       Placeholder.configure({ placeholder: "Schreib los … Bilder und Excel-Dateien einfach hineinziehen oder einfügen." }),
     ],
@@ -286,7 +283,6 @@ function Toolbar({
         () => (state.table ? c().deleteTable().run() : c().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()),
         <Table size={15} />,
       )}
-      {btn("ISIN-Filter einfügen", false, () => c().insertIsinFilter().run(), <ListFilter size={16} />)}
       {btn("Bild hochladen", false, onImage, <ImagePlus size={16} />)}
       {btn("Foto mit Handy aufnehmen (QR-Code)", false, onMobile, <Smartphone size={15} />)}
       {btn("Excel-Datei anhängen", false, onAttachment, <Paperclip size={15} />)}
