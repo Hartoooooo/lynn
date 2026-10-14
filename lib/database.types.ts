@@ -133,13 +133,22 @@ export type Database = {
         ];
       };
       roster_weeks: {
-        Row: { id: string; start_date: string; range: string; dates: string[]; hint: string | null; shifts: Json; updated_at: string };
+        Row: {
+          id: string;
+          start_date: string;
+          range: string;
+          dates: string[];
+          hint: string | null;
+          shifts: Json;
+          ha_shifts: Json;
+          updated_at: string;
+        };
         Insert: { start_date: string; range: string; dates: string[]; hint?: string | null; shifts?: Json };
         Update: { hint?: string | null; shifts?: Json };
         Relationships: Rel[];
       };
       roster_meta: {
-        Row: { id: number; version: number; names: string[] };
+        Row: { id: number; version: number; names: string[]; ha_names: string[] };
         Insert: { id?: number; version?: number; names?: string[] };
         Update: { version?: number; names?: string[] };
         Relationships: Rel[];
@@ -299,6 +308,7 @@ export type Database = {
         Returns: number;
       };
       roster_import: { Args: { weeks: Json; names: string[] }; Returns: number };
+      roster_set_ha: { Args: { week: string; person: string; day: number; value: string }; Returns: undefined };
       search_all: {
         Args: { max_results?: number; q: string; topic_filter?: string };
         Returns: {

@@ -9,6 +9,8 @@ export type RosterWeek = {
   dates: string[];
   hint: string | null;
   shifts: Record<string, ShiftValue[]>;
+  /** Handelsassistenz: selbst eingetragene Zeiten, nicht tauschbar. */
+  ha_shifts: Record<string, ShiftValue[]>;
 };
 
 export type RosterSwap = {
@@ -189,4 +191,19 @@ export function currentWeekIndex(weeks: RosterWeek[], today = new Date()) {
 export function parseTimeInput(value: string) {
   const m = /^(\d{1,2}):(\d{2})$/.exec(value.trim());
   return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+}
+
+/** Erlaubte HA-Werte: leer, frei, URLAUB oder H:MM-H:MM mit Ende nach Beginn (wie RPC roster_set_ha). */
+export function isValidHaValue(v: string | null) {
+  if (v === null || v.trim() === "" || v === "frei" || v === "URLAUB") return true;
+  const m = /^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$/.exec(v.trim());
+  if (!m) return false;
+  const [h1, m1, h2, m2] = m.slice(1).map(Number) as [number, number, number, number];
+  if (h1 > 23 || h2 > 23 || m1 > 59 || m2 > 59) return false;
+  return h2 * 60 + m2 > h1 * 60 + m1;
+}
+
+/** "09:00" → "9:00" (gleiches Format wie im Dienstplan). */
+export function compactTime(t: string) {
+  return t.replace(/^0(\d):/, "$1:");
 }

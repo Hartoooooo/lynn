@@ -17,6 +17,7 @@ import {
   type RosterWeek,
 } from "@/lib/roster";
 import { cn, timeAgo } from "@/lib/utils";
+import { HaSection } from "./ha-section";
 import { ImportDialog } from "./import-dialog";
 import { SwapLine, SwapSheet } from "./swap-sheet";
 
@@ -31,12 +32,14 @@ function todayLabel() {
 export function RosterView({
   weeks,
   names,
+  haNames,
   activity,
   version: initialVersion,
   isAdmin,
 }: {
   weeks: RosterWeek[];
   names: string[];
+  haNames: string[];
   activity: RosterActivity[];
   version: number;
   isAdmin: boolean;
@@ -78,6 +81,8 @@ export function RosterView({
             toast("Dienstplan wurde aktualisiert");
           }
         })
+        // HA-Zeiten (ändern die Version nicht) → still neu laden
+        .on("postgres_changes", { event: "UPDATE", schema: "public", table: "roster_weeks" }, () => router.refresh())
         .subscribe();
     })();
     // Fallback: beim Zurückkehren in den Tab aktualisieren (z. B. nach Standby)
@@ -93,9 +98,9 @@ export function RosterView({
   useEffect(() => {
     try {
       const stored = localStorage.getItem(WHO_KEY);
-      if (stored && names.includes(stored)) setWho(stored);
+      if (stored && (names.includes(stored) || haNames.includes(stored))) setWho(stored);
     } catch {}
-  }, [names]);
+  }, [names, haNames]);
 
   function chooseWho(name: string) {
     setWho(name);
@@ -128,11 +133,22 @@ export function RosterView({
             className="h-9 min-w-0 max-w-44 rounded-[10px] border border-border bg-surface px-3 text-sm text-text focus:border-accent focus:outline-none"
           >
             <option value="">Ich bin …</option>
-            {names.map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
+            <optgroup label="Handel">
+              {names.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </optgroup>
+            {haNames.length > 0 && (
+              <optgroup label="Handelsassistenz">
+                {haNames.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
           {isAdmin && (
             <Button variant="ghost" size="icon" onClick={() => setImportOpen(true)} title="Dienstplan importieren (Excel)" aria-label="Dienstplan importieren">
@@ -244,6 +260,7 @@ export function RosterView({
             </table>
           </div>
 
+          {haNames.length > 0 && <HaSection week={week} haNames={haNames} who={who} today={today} />}
         </>
       )}
 

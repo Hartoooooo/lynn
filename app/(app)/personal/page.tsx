@@ -45,8 +45,8 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
 
   if (tab === "dienstplan") {
     const [weeksRes, metaRes, activityRes] = await Promise.all([
-      supabase.from("roster_weeks").select("id, start_date, range, dates, hint, shifts").order("start_date"),
-      supabase.from("roster_meta").select("version, names").eq("id", 1).maybeSingle(),
+      supabase.from("roster_weeks").select("id, start_date, range, dates, hint, shifts, ha_shifts").order("start_date"),
+      supabase.from("roster_meta").select("version, names, ha_names").eq("id", 1).maybeSingle(),
       supabase
         .from("roster_activity")
         .select("id, created_at, note, swaps, author:profiles!roster_activity_created_by_fkey(full_name)")
@@ -60,6 +60,7 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
         <RosterView
           weeks={(weeksRes.data ?? []) as unknown as RosterWeek[]}
           names={metaRes.data?.names ?? []}
+          haNames={metaRes.data?.ha_names ?? []}
           activity={(activityRes.data ?? []) as unknown as RosterActivity[]}
           version={metaRes.data?.version ?? 0}
           isAdmin={isAdmin(profile.role)}

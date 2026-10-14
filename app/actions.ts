@@ -370,3 +370,24 @@ export async function applyRosterImport(weeks: ImportedWeek[], names: string[]) 
   revalidatePath("/personal");
   return { ok: true as const };
 }
+
+export async function setHaShift(input: { weekId: string; person: string; day: number; value: string | null }) {
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("roster_set_ha", {
+    week: input.weekId,
+    person: input.person,
+    day: input.day,
+    value: input.value ?? "",
+  });
+  if (!error) {
+    revalidatePath("/personal");
+    return { ok: true as const };
+  }
+  const messages: Record<string, string> = {
+    not_authenticated: "Nicht angemeldet – bitte neu einloggen.",
+    invalid_time: "Ungültige Zeit – „bis“ muss nach „von“ liegen.",
+    invalid_person: "Diese Person gehört nicht zur Handelsassistenz.",
+  };
+  const key = Object.keys(messages).find((k) => error.message.includes(k));
+  return { ok: false as const, message: key ? messages[key]! : error.message };
+}
