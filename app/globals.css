@@ -311,3 +311,66 @@ mark.hit {
 .prose-lynn .not-prose pre {
   margin: 0;
 }
+
+@keyframes sheet-up {
+  from { transform: translateY(40px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Handy (< 640px): Seitenleiste als Drawer, Kopfzeile mit Menü               */
+/* -------------------------------------------------------------------------- */
+.mobile-topbar,
+.drawer-backdrop {
+  display: none;
+}
+
+@media (max-width: 639px) {
+  .app-shell,
+  .app-shell[data-collapsed="true"] {
+    --sidebar-w: 0px;
+    --searchbar-h: 76px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-shell > aside {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 70;
+    width: min(288px, 84vw);
+    transform: translateX(-100%);
+    transition: transform 200ms ease-out;
+  }
+
+  .app-shell[data-drawer="true"] > aside {
+    transform: none;
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.5);
+  }
+
+  .drawer-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 65;
+    background: rgba(0, 0, 0, 0.55);
+  }
+
+  .mobile-topbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    height: 56px;
+    padding: 0 10px;
+    background: color-mix(in srgb, var(--bg) 92%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .page-grid {
+    padding: 20px 16px 0;
+    gap: 28px;
+  }
+}

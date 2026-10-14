@@ -132,6 +132,32 @@ export type Database = {
           },
         ];
       };
+      roster_weeks: {
+        Row: { id: string; start_date: string; range: string; dates: string[]; hint: string | null; shifts: Json; updated_at: string };
+        Insert: { start_date: string; range: string; dates: string[]; hint?: string | null; shifts?: Json };
+        Update: { hint?: string | null; shifts?: Json };
+        Relationships: Rel[];
+      };
+      roster_meta: {
+        Row: { id: number; version: number; names: string[] };
+        Insert: { id?: number; version?: number; names?: string[] };
+        Update: { version?: number; names?: string[] };
+        Relationships: Rel[];
+      };
+      roster_activity: {
+        Row: { id: string; created_at: string; created_by: string | null; note: string | null; swaps: Json };
+        Insert: { note?: string | null; swaps: Json };
+        Update: { note?: string | null };
+        Relationships: [
+          {
+            foreignKeyName: "roster_activity_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       mobile_upload_sessions: {
         Row: { created_at: string; created_by: string; entry_id: string; expires_at: string; id: string };
         Insert: { entry_id: string; created_by?: string; expires_at?: string; id?: string };
@@ -259,6 +285,20 @@ export type Database = {
     Functions: {
       consume_ai_quota: { Args: { daily_limit: number }; Returns: boolean };
       mobile_session_expires: { Args: { session: string }; Returns: string | null };
+      roster_swap: {
+        Args: {
+          week_a: string;
+          day_a: number;
+          person_a: string;
+          week_b: string;
+          day_b: number;
+          person_b: string;
+          note: string;
+          expected_version: number;
+        };
+        Returns: number;
+      };
+      roster_import: { Args: { weeks: Json; names: string[] }; Returns: number };
       search_all: {
         Args: { max_results?: number; q: string; topic_filter?: string };
         Returns: {

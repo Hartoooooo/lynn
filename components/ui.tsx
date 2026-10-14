@@ -66,12 +66,15 @@ export function Dialog({
   title,
   children,
   wide,
+  sheet,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   children: React.ReactNode;
   wide?: boolean;
+  /** Auf dem Handy als Bottom-Sheet (von unten), auf dem Desktop normaler Dialog. */
+  sheet?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
 
@@ -92,6 +95,8 @@ export function Dialog({
       className={cn(
         "m-auto w-[calc(100%-32px)] rounded-2xl border border-border bg-sidebar p-0 text-text shadow-2xl backdrop:bg-black/60 backdrop:backdrop-blur-[2px]",
         wide ? "max-w-2xl" : "max-w-md",
+        sheet &&
+          "max-sm:mb-0 max-sm:w-full max-sm:max-w-none max-sm:rounded-b-none max-sm:border-x-0 max-sm:border-b-0 max-sm:animate-[sheet-up_200ms_ease-out]",
       )}
     >
       {open && (
@@ -102,7 +107,7 @@ export function Dialog({
               <X size={16} />
             </Button>
           </div>
-          <div className="max-h-[75dvh] overflow-y-auto px-5 py-5">{children}</div>
+          <div className="max-h-[75dvh] overflow-y-auto px-5 py-5 max-sm:max-h-[82dvh]">{children}</div>
         </div>
       )}
     </dialog>

@@ -242,7 +242,7 @@ export function SearchBar({ aiEnabled, topics }: { aiEnabled: boolean; topics: N
   const aiBusy = Boolean(ai && !ai.done);
 
   return (
-    <div className="pointer-events-none fixed bottom-0 left-[var(--sidebar-w)] right-0 z-40 px-6 pb-5 pt-8 [background:linear-gradient(to_top,var(--bg)_55%,transparent)]">
+    <div className="pointer-events-none fixed bottom-0 left-[var(--sidebar-w)] right-0 z-40 px-6 pb-5 pt-8 max-sm:px-3 max-sm:pb-3 [background:linear-gradient(to_top,var(--bg)_55%,transparent)]">
       <div className="pointer-events-auto relative mx-auto max-w-[760px]">
         {showPanel && (
           <div

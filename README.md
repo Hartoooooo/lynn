@@ -12,7 +12,8 @@ Gebaut für **Hochkant-Monitore** (1080×1920, 1440×2560). Auf Quer-Monitoren a
 - **Suche** (unten, `Strg K` oder `/`):
   - *Standard*: Volltextsuche über Einträge, Themen und Personal. Sie nutzt die deutsche Wortstammsuche, verzeiht Tippfehler, hebt Treffer hervor und lässt sich auf das aktuelle Thema einschränken.
   - *KI-Schalter*: Claude durchsucht die Wissensbasis selbstständig und antwortet mit Quellen-Links. Der Schalter ist nur aktiv, wenn `ANTHROPIC_API_KEY` gesetzt ist. Es gibt ein Tageslimit pro Nutzer.
-- **Personal**: Ansprechpartner mit Foto, Kontaktdaten, Teams-Link, Fachgebieten und Themenzuordnung (z. B. Hauptansprechpartner oder Vertretung). Die Suche beantwortet „Wer kennt sich aus mit …?“.
+- **Dienstplan** (Personal → Dienstplan): Wochenplan Mo–Fr mit Farbcodierung, „Ich bin …“-Auswahl pro Gerät, eigene Schicht antippen → Tauschpartner am gleichen Tag oder an anderen Tagen der Woche, Anfrage per Kopieren/WhatsApp, Tausch speichern (jeder Lynn-Login), Verlauf und Gruppennachricht. Gleichzeitiges Speichern wird erkannt („bitte neu laden“). Admins importieren neue Pläne als Excel.
+- **Personal → Ansprechpartner**: Ansprechpartner mit Foto, Kontaktdaten, Teams-Link, Fachgebieten und Themenzuordnung (z. B. Hauptansprechpartner oder Vertretung). Die Suche beantwortet „Wer kennt sich aus mit …?“.
 - **Rollen**: Admin, Editor und Leser. Das erste Konto wird automatisch Admin, alle weiteren starten als Leser. Rollen vergebt ihr unter *Einstellungen*.
 
 ## Technik

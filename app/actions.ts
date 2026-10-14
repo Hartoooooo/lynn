@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { Json, UserRole } from "@/lib/database.types";
+import { parseRosterWorkbook, type ImportedWeek } from "@/lib/roster-import";
+import { createClient } from "@/lib/supabase/server";
 import { getSession, requireAdmin, requireEditor } from "@/lib/session";
 import { slugify } from "@/lib/utils";
 
@@ -292,4 +294,79 @@ export async function setUserRole(userId: string, role: UserRole) {
   const { error } = await supabase.from("profiles").update({ role }).eq("id", userId);
   if (error) fail(error.message);
   revalidatePath("/einstellungen");
+}
+
+// ---------------------------------------------------------------------------
+// Dienstplan
+// ---------------------------------------------------------------------------
+
+export type SwapResult =
+  | { ok: true; version: number }
+  | { ok: false; kind: "auth" | "conflict" | "other"; message: string };
+
+/** Fehler werden als Ergebnis zurückgegeben (nicht geworfen), damit die Ursache beim Nutzer ankommt. */
+export async function swapShifts(input: {
+  weekId: string;
+  dayA: number;
+  personA: string;
+  dayB: number;
+  personB: string;
+  note: string;
+  version: number;
+}): Promise<SwapResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { ok: false, kind: "auth", message: "Nicht angemeldet oder noch nicht freigegeben – bitte Admin fragen." };
+  }
+  const { data, error } = await supabase.rpc("roster_swap", {
+    week_a: input.weekId,
+    day_a: input.dayA,
+    person_a: input.personA,
+    week_b: input.weekId,
+    day_b: input.dayB,
+    person_b: input.personB,
+    note: input.note,
+    expected_version: input.version,
+  });
+  if (error) {
+    if (error.message.includes("version_conflict")) {
+      return {
+        ok: false,
+        kind: "conflict",
+        message: "Jemand anderes hat gerade gespeichert – bitte Seite neu laden und erneut versuchen.",
+      };
+    }
+    if (error.message.includes("not_authenticated")) {
+      return { ok: false, kind: "auth", message: "Nicht angemeldet oder noch nicht freigegeben – bitte Admin fragen." };
+    }
+    if (error.message.includes("not_tradeable")) {
+      return { ok: false, kind: "other", message: "Dieser Tausch ist mit dem aktuellen Plan nicht mehr möglich (not_tradeable)." };
+    }
+    return { ok: false, kind: "other", message: error.message };
+  }
+  revalidatePath("/personal");
+  return { ok: true, version: data as number };
+}
+
+export async function parseRosterFile(formData: FormData) {
+  await requireAdmin();
+  const file = formData.get("file");
+  if (!(file instanceof File)) return { ok: false as const, message: "Keine Datei ausgewählt." };
+  try {
+    const result = await parseRosterWorkbook(await file.arrayBuffer());
+    return { ok: true as const, ...result };
+  } catch (err) {
+    return { ok: false as const, message: err instanceof Error ? err.message : "Datei konnte nicht gelesen werden." };
+  }
+}
+
+export async function applyRosterImport(weeks: ImportedWeek[], names: string[]) {
+  const { supabase } = await requireAdmin();
+  const { error } = await supabase.rpc("roster_import", { weeks: weeks as unknown as Json, names });
+  if (error) return { ok: false as const, message: error.message };
+  revalidatePath("/personal");
+  return { ok: true as const };
 }
