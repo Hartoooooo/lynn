@@ -7,6 +7,7 @@ import { Toc } from "@/components/entry/toc";
 import { IsinFilterPanel, type IsinItem } from "@/components/editor/isin-filter";
 import type { Version } from "@/components/entry/versions-dialog";
 import { ContactsPanel, type Contact } from "@/components/topic/contacts-panel";
+import { getEntry } from "@/lib/queries";
 import { canEdit, getSession } from "@/lib/session";
 
 type Params = {
@@ -19,24 +20,15 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { entryId } = await params;
   if (!UUID.test(entryId)) return { title: "Eintrag" };
-  const { supabase } = await getSession();
-  const { data } = await supabase.from("entries").select("title").eq("id", entryId).maybeSingle();
-  return { title: data?.title || "Unbenannt" };
+  const entry = await getEntry(entryId);
+  return { title: entry?.title || "Unbenannt" };
 }
 
 export default async function EntryPage({ params, searchParams }: Params) {
   const { slug, entryId } = await params;
   const { neu } = await searchParams;
   if (!UUID.test(entryId)) notFound();
-  const { supabase, profile, user } = await getSession();
-
-  const { data: entry } = await supabase
-    .from("entries")
-    .select(
-      "id, title, content_json, updated_at, pinned, topic_id, kind, isin_items, topic:topics(id, name, slug, color, icon), editor:profiles!entries_updated_by_fkey(full_name)",
-    )
-    .eq("id", entryId)
-    .maybeSingle();
+  const [{ supabase, profile, user }, entry] = await Promise.all([getSession(), getEntry(entryId)]);
   if (!entry || !entry.topic) notFound();
   if (entry.topic.slug !== slug) redirect(`/t/${entry.topic.slug}/${entry.id}`);
 

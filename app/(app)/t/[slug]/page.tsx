@@ -5,42 +5,33 @@ import { EntryRow, SectionTitle } from "@/components/entry-row";
 import { ContactsPanel, type Contact } from "@/components/topic/contacts-panel";
 import { TopicHeader } from "@/components/topic/topic-header";
 import { EmptyState } from "@/components/ui";
-import { canEdit, getSession, isAdmin } from "@/lib/session";
+import { getTopicWithEntries } from "@/lib/queries";
+import { canEdit, getAuth, getSession, isAdmin } from "@/lib/session";
 
 type Params = { params: Promise<{ slug: string }> };
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug } = await params;
-  const { supabase } = await getSession();
-  const { data } = await supabase.from("topics").select("name").eq("slug", slug).maybeSingle();
-  return { title: data?.name ?? "Thema" };
+  const topic = await getTopicWithEntries(slug);
+  return { title: topic?.name ?? "Thema" };
 }
 
 export default async function TopicPage({ params }: Params) {
   const { slug } = await params;
-  const { supabase, profile } = await getSession();
-
-  const { data: topic } = await supabase
-    .from("topics")
-    .select("id, name, slug, icon, color, description, archived")
-    .eq("slug", slug)
-    .maybeSingle();
+  // Profil, Thema+Einträge und Kontakte parallel (Kontakte über den Slug gefiltert)
+  const [{ profile }, topic, contactsRes] = await Promise.all([
+    getSession(),
+    getTopicWithEntries(slug),
+    getAuth().then(({ supabase }) =>
+      supabase
+        .from("topic_contacts")
+        .select("label, person:people(id, name, position, email, phone, teams_url, avatar_url), topic:topics!inner(slug)")
+        .eq("topic.slug", slug),
+    ),
+  ]);
   if (!topic) notFound();
 
-  const [entriesRes, contactsRes] = await Promise.all([
-    supabase
-      .from("entries")
-      .select("id, title, updated_at, pinned, content_text, editor:profiles!entries_updated_by_fkey(full_name)")
-      .eq("topic_id", topic.id)
-      .order("pinned", { ascending: false })
-      .order("updated_at", { ascending: false }),
-    supabase
-      .from("topic_contacts")
-      .select("label, person:people(id, name, position, email, phone, teams_url, avatar_url)")
-      .eq("topic_id", topic.id),
-  ]);
-
-  const entries = entriesRes.data ?? [];
+  const entries = topic.entries ?? [];
   const editable = canEdit(profile.role);
 
   return (

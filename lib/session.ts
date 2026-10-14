@@ -5,13 +5,20 @@ import type { Tables, UserRole } from "@/lib/database.types";
 
 export type Profile = Tables<"profiles">;
 
+/** Client + geprüfter Nutzer (ohne Profil); leitet ohne Login auf /login um. */
+export const getAuth = cache(async () => {
+  const supabase = await createClient();
+  // JWT lokal geprüft (getClaims) statt Rundreise zum Auth-Server – die DB prüft ohnehin per RLS.
+  const { data } = await supabase.auth.getClaims();
+  const claims = data?.claims;
+  if (!claims?.sub) redirect("/login");
+  const user = { id: claims.sub, email: typeof claims.email === "string" ? claims.email : undefined };
+  return { supabase, user };
+});
+
 /** Aktueller Nutzer samt Profil; leitet ohne Login auf /login um. */
 export const getSession = cache(async () => {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const { supabase, user } = await getAuth();
 
   const { data: profile } = await supabase
     .from("profiles")

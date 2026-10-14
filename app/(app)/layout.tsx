@@ -1,14 +1,14 @@
 import { AppShell } from "@/components/shell/app-shell";
-import { getSession } from "@/lib/session";
+import { getAuth, getSession } from "@/lib/session";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const { supabase, profile, user } = await getSession();
-  const { data: topics } = await supabase
-    .from("topics")
-    .select("id, name, slug, icon, color")
-    .eq("archived", false)
-    .order("sort_order")
-    .order("name");
+  // Profil und Themenliste parallel laden
+  const [{ profile, user }, { data: topics }] = await Promise.all([
+    getSession(),
+    getAuth().then(({ supabase }) =>
+      supabase.from("topics").select("id, name, slug, icon, color").eq("archived", false).order("sort_order").order("name"),
+    ),
+  ]);
 
   return (
     <AppShell
