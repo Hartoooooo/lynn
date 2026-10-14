@@ -17,7 +17,7 @@ import {
   type RosterWeek,
 } from "@/lib/roster";
 import { cn, timeAgo } from "@/lib/utils";
-import { HaSection } from "./ha-section";
+import { HaEditDialog, HaRows, type HaEdit } from "./ha-section";
 import { ImportDialog } from "./import-dialog";
 import { SwapLine, SwapSheet } from "./swap-sheet";
 
@@ -49,6 +49,7 @@ export function RosterView({
   const [who, setWho] = useState<string>("");
   const [version, setVersion] = useState(initialVersion);
   const [sheet, setSheet] = useState<{ day: number } | null>(null);
+  const [haEdit, setHaEdit] = useState<HaEdit | null>(null);
   const [importOpen, setImportOpen] = useState(false);
 
   useEffect(() => setVersion(initialVersion), [initialVersion]);
@@ -257,10 +258,22 @@ export function RosterView({
                   );
                 })}
               </tbody>
+              {haNames.length > 0 && <HaRows week={week} haNames={haNames} who={who} today={today} onEdit={setHaEdit} />}
             </table>
           </div>
-
-          {haNames.length > 0 && <HaSection week={week} haNames={haNames} who={who} today={today} />}
+          {haNames.includes(who) && (
+            <p className="mt-2 text-[12.5px] text-faint">Tippe in der HA-Zeile auf deine Tage, um „von – bis“ einzutragen.</p>
+          )}
+          {haEdit && (
+            <HaEditDialog
+              key={`${week.id}-${haEdit.person}-${haEdit.day}`}
+              week={week}
+              person={haEdit.person}
+              day={haEdit.day}
+              current={week.ha_shifts?.[haEdit.person]?.[haEdit.day] ?? null}
+              onClose={() => setHaEdit(null)}
+            />
+          )}
         </>
       )}
 

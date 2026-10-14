@@ -18,96 +18,87 @@ import {
 } from "@/lib/roster";
 import { cn } from "@/lib/utils";
 
-/** Handelsassistenz: jede Person trägt ihre Zeiten (von–bis) pro Woche selbst ein. */
-export function HaSection({
+export type HaEdit = { person: string; day: number };
+
+/** Handelsassistenz: Zeilen direkt im Kalender – jede Person trägt ihre Zeiten (von–bis) pro Woche selbst ein. */
+export function HaRows({
   week,
   haNames,
   who,
   today,
+  onEdit,
 }: {
   week: RosterWeek;
   haNames: string[];
   who: string;
   today: string;
+  onEdit: (edit: HaEdit) => void;
 }) {
-  const [edit, setEdit] = useState<{ person: string; day: number } | null>(null);
   const ha = week.ha_shifts ?? {};
 
   return (
-    <section className="mt-8">
-      <h2 className="mb-3 text-[12px] font-semibold uppercase tracking-[0.08em] text-faint">Handelsassistenz (HA)</h2>
-      <div className="overflow-x-auto rounded-2xl border border-border">
-        <table className="w-full min-w-[520px] border-collapse text-sm">
-          <tbody>
-            {haNames.map((name, rowIdx) => {
-              const mine = name === who;
+    <tbody>
+      <tr className="border-t border-border bg-surface">
+        <th
+          scope="colgroup"
+          colSpan={6}
+          className="sticky left-0 px-3 py-2 text-left text-[11.5px] font-semibold uppercase tracking-[0.08em] text-faint"
+        >
+          Handelsassistenz (HA)
+        </th>
+      </tr>
+      {haNames.map((name) => {
+        const mine = name === who;
+        return (
+          <tr key={name} className={cn("border-t border-border", mine && "bg-accent-soft/40")}>
+            <th
+              scope="row"
+              className={cn(
+                "sticky left-0 z-10 whitespace-nowrap px-3 py-1.5 text-left text-[13px] font-medium",
+                mine ? "bg-[#2e2724] text-text" : "bg-bg text-text-2",
+              )}
+            >
+              {name}
+            </th>
+            {[0, 1, 2, 3, 4].map((day) => {
+              const value = ha[name]?.[day] ?? null;
+              const empty = value === null || value === "";
+              const style = SHIFT_STYLE[shiftKind(value)];
+              const content = (
+                <span
+                  className="flex h-9 w-full items-center justify-center whitespace-nowrap rounded-lg px-1.5 font-mono text-[12.5px] tabular-nums max-sm:text-[11.5px]"
+                  style={empty ? undefined : { color: style.color, background: style.bg }}
+                >
+                  {empty ? mine ? <Plus size={14} className="text-accent" /> : <span className="text-faint">–</span> : displayValue(value)}
+                </span>
+              );
               return (
-                <tr key={name} className={cn(rowIdx > 0 && "border-t border-border", mine && "bg-accent-soft/40")}>
-                  <th
-                    scope="row"
-                    className={cn(
-                      "sticky left-0 z-10 w-[1%] whitespace-nowrap px-3 py-1.5 text-left text-[13px] font-medium",
-                      mine ? "bg-[#2e2724] text-text" : "bg-bg text-text-2",
-                    )}
-                  >
-                    {name}
-                  </th>
-                  {[0, 1, 2, 3, 4].map((day) => {
-                    const value = ha[name]?.[day] ?? null;
-                    const empty = value === null || value === "";
-                    const style = SHIFT_STYLE[shiftKind(value)];
-                    const content = (
-                      <span
-                        className="flex h-9 w-full items-center justify-center whitespace-nowrap rounded-lg px-1.5 font-mono text-[12.5px] tabular-nums max-sm:text-[11.5px]"
-                        style={empty ? undefined : { color: style.color, background: style.bg }}
-                      >
-                        {empty ? mine ? <Plus size={14} className="text-accent" /> : <span className="text-faint">–</span> : displayValue(value)}
-                      </span>
-                    );
-                    return (
-                      <td key={day} className={cn("p-1", week.dates[day] === today && "bg-surface/60")}>
-                        {mine ? (
-                          <button
-                            onClick={() => setEdit({ person: name, day })}
-                            className={cn(
-                              "block w-full rounded-lg transition hover:ring-2 hover:ring-accent focus-visible:ring-2",
-                              empty ? "outline-1 outline-dashed outline-accent/50" : "ring-1 ring-accent/60",
-                            )}
-                            aria-label={`${name}, ${DAYS_SHORT[day]} ${empty ? "Zeit eintragen" : `${displayValue(value)} ändern`}`}
-                          >
-                            {content}
-                          </button>
-                        ) : (
-                          content
-                        )}
-                      </td>
-                    );
-                  })}
-                </tr>
+                <td key={day} className={cn("p-1", week.dates[day] === today && "bg-surface/60")}>
+                  {mine ? (
+                    <button
+                      onClick={() => onEdit({ person: name, day })}
+                      className={cn(
+                        "block w-full rounded-lg transition hover:ring-2 hover:ring-accent focus-visible:ring-2",
+                        empty ? "outline-1 outline-dashed outline-accent/50" : "ring-1 ring-accent/60",
+                      )}
+                      aria-label={`${name}, ${DAYS_SHORT[day]} ${empty ? "Zeit eintragen" : `${displayValue(value)} ändern`}`}
+                    >
+                      {content}
+                    </button>
+                  ) : (
+                    content
+                  )}
+                </td>
               );
             })}
-          </tbody>
-        </table>
-      </div>
-      {haNames.includes(who) ? (
-        <p className="mt-2 text-[12.5px] text-faint">Tippe auf deine Tage, um „von – bis“ einzutragen.</p>
-      ) : null}
-
-      {edit && (
-        <HaEditDialog
-          key={`${week.id}-${edit.person}-${edit.day}`}
-          week={week}
-          person={edit.person}
-          day={edit.day}
-          current={ha[edit.person]?.[edit.day] ?? null}
-          onClose={() => setEdit(null)}
-        />
-      )}
-    </section>
+          </tr>
+        );
+      })}
+    </tbody>
   );
 }
 
-function HaEditDialog({
+export function HaEditDialog({
   week,
   person,
   day,
