@@ -13,14 +13,12 @@ import {
   shiftKind,
   type RosterActivity,
   type RosterWeek,
-  type ShiftKind,
 } from "@/lib/roster";
 import { cn, timeAgo } from "@/lib/utils";
 import { ImportDialog } from "./import-dialog";
 import { SwapLine, SwapSheet } from "./swap-sheet";
 
 const WHO_KEY = "lynn.roster.who";
-const LEGEND: ShiftKind[] = ["frueh1", "frueh2", "frueh3", "spaet", "mp", "frei", "urlaub", "boersenfrei"];
 
 function todayLabel() {
   return new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Europe/Berlin" }).format(
@@ -211,26 +209,18 @@ export function RosterView({
             </table>
           </div>
 
-          <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2">
-            {LEGEND.map((k) => (
-              <span key={k} className="flex items-center gap-1.5 text-[12px] text-muted">
-                <span className="h-3 w-3 rounded" style={{ background: SHIFT_STYLE[k].bg, boxShadow: `inset 0 0 0 1px ${SHIFT_STYLE[k].color}` }} />
-                {SHIFT_STYLE[k].label}
-              </span>
-            ))}
-          </div>
         </>
       )}
 
       <section className="mt-10">
         <h2 className="mb-3 flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-[0.08em] text-faint">
-          <History size={13} /> Letzte Tausche
+          <History size={13} /> Letzter Tausch
         </h2>
         {activity.length === 0 ? (
           <p className="text-sm text-muted">Noch keine Tausche.</p>
         ) : (
           <ul className="space-y-2">
-            {activity.slice(0, 12).map((a) => (
+            {activity.slice(0, 1).map((a) => (
               <li key={a.id} className="rounded-xl border border-border bg-surface px-4 py-3">
                 <div className="mb-1.5 flex flex-wrap items-center gap-x-2 text-[12.5px] text-faint">
                   <span>{timeAgo(a.created_at)}</span>
