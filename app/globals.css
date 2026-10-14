@@ -297,3 +297,17 @@ mark.hit {
 .prose-lynn a.file-download:hover {
   color: var(--text);
 }
+
+/* Eigenständige Blöcke im Editor (z. B. ISIN-Filter) von Fließtext-Stilen ausnehmen */
+.prose-lynn .not-prose ul {
+  list-style: none;
+  padding-left: 0;
+}
+
+.prose-lynn .not-prose li + li {
+  margin-top: 0;
+}
+
+.prose-lynn .not-prose pre {
+  margin: 0;
+}
