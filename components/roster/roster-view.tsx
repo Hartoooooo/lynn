@@ -115,22 +115,19 @@ export function RosterView({
 
   return (
     <div>
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="font-serif text-[30px] font-medium tracking-tight">Dienstplan</h1>
-          <p className="mt-1 text-muted">Eigene Schicht antippen, um sie zu tauschen.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <label htmlFor="who" className="text-sm text-muted">
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="font-serif text-[30px] font-medium tracking-tight">Dienstplan</h1>
+        <div className="flex min-w-0 items-center gap-2">
+          <label htmlFor="who" className="text-sm text-muted max-sm:sr-only">
             Ich bin
           </label>
           <select
             id="who"
             value={who}
             onChange={(e) => chooseWho(e.target.value)}
-            className="h-9 rounded-[10px] border border-border bg-surface px-3 text-sm text-text focus:border-accent focus:outline-none"
+            className="h-9 min-w-0 max-w-44 rounded-[10px] border border-border bg-surface px-3 text-sm text-text focus:border-accent focus:outline-none"
           >
-            <option value="">– auswählen –</option>
+            <option value="">Ich bin …</option>
             {names.map((n) => (
               <option key={n} value={n}>
                 {n}
@@ -144,6 +141,7 @@ export function RosterView({
           )}
         </div>
       </div>
+      <p className="mt-1 text-muted">Eigene Schicht antippen, um sie zu tauschen.</p>
 
       {!week ? (
         <div className="mt-8">
