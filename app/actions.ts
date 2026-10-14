@@ -173,6 +173,26 @@ function extractText(node: Json): string {
 }
 
 // ---------------------------------------------------------------------------
+// Foto per Handy (QR-Code)
+// ---------------------------------------------------------------------------
+
+export async function createMobileUploadSession(entryId: string) {
+  const { supabase } = await requireEditor();
+  const { data, error } = await supabase
+    .from("mobile_upload_sessions")
+    .insert({ entry_id: entryId })
+    .select("id, expires_at")
+    .single();
+  if (error || !data) fail(error?.message ?? "Sitzung konnte nicht erstellt werden");
+  return data;
+}
+
+export async function endMobileUploadSession(id: string) {
+  const { supabase } = await getSession();
+  await supabase.from("mobile_upload_sessions").update({ expires_at: new Date().toISOString() }).eq("id", id);
+}
+
+// ---------------------------------------------------------------------------
 // Favoriten
 // ---------------------------------------------------------------------------
 

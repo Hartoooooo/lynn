@@ -1,7 +1,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/auth"];
+// /upload: Handy-Upload per QR-Code, abgesichert über die kurzlebige Sitzungs-ID.
+const PUBLIC_PATHS = ["/login", "/auth", "/upload"];
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });

@@ -129,6 +129,12 @@ export type Database = {
           },
         ];
       };
+      mobile_upload_sessions: {
+        Row: { created_at: string; created_by: string; entry_id: string; expires_at: string; id: string };
+        Insert: { entry_id: string; created_by?: string; expires_at?: string; id?: string };
+        Update: { expires_at?: string };
+        Relationships: Rel[];
+      };
       people: {
         Row: {
           avatar_url: string | null;
@@ -249,6 +255,7 @@ export type Database = {
     Views: { [_ in never]: never };
     Functions: {
       consume_ai_quota: { Args: { daily_limit: number }; Returns: boolean };
+      mobile_session_expires: { Args: { session: string }; Returns: string | null };
       search_all: {
         Args: { max_results?: number; q: string; topic_filter?: string };
         Returns: {

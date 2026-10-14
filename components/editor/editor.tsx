@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { EditorContent, useEditor, useEditorState, type Editor as TiptapEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
@@ -20,6 +20,7 @@ import {
   Minus,
   Paperclip,
   Quote,
+  Smartphone,
   Strikethrough,
   Table,
   Underline,
@@ -27,6 +28,7 @@ import {
 import type { JSONContent } from "@tiptap/core";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+import { MobileUploadDialog } from "./mobile-upload-dialog";
 import { ATTACHMENT_ACCEPT, ATTACHMENT_TYPES, attachmentExtension, FileAttachment } from "./file-attachment";
 
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
@@ -78,6 +80,7 @@ export function Editor({
 }) {
   const fileInput = useRef<HTMLInputElement>(null);
   const attachmentInput = useRef<HTMLInputElement>(null);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const handlers = useRef({ onChange, onError });
   handlers.current = { onChange, onError };
 
@@ -158,6 +161,14 @@ export function Editor({
           editor={editor}
           onImage={() => fileInput.current?.click()}
           onAttachment={() => attachmentInput.current?.click()}
+          onMobile={() => setMobileOpen(true)}
+        />
+      )}
+      {mobileOpen && (
+        <MobileUploadDialog
+          entryId={entryId}
+          onClose={() => setMobileOpen(false)}
+          onImage={(src) => editor.chain().focus().setImage({ src, alt: "Foto vom Handy" }).run()}
         />
       )}
       <EditorContent editor={editor} />
@@ -193,10 +204,12 @@ function Toolbar({
   editor,
   onImage,
   onAttachment,
+  onMobile,
 }: {
   editor: TiptapEditor;
   onImage: () => void;
   onAttachment: () => void;
+  onMobile: () => void;
 }) {
   const state = useEditorState({
     editor,
@@ -271,6 +284,7 @@ function Toolbar({
         <Table size={15} />,
       )}
       {btn("Bild hochladen", false, onImage, <ImagePlus size={16} />)}
+      {btn("Foto mit Handy aufnehmen (QR-Code)", false, onMobile, <Smartphone size={15} />)}
       {btn("Excel-Datei anhängen", false, onAttachment, <Paperclip size={15} />)}
     </div>
   );

@@ -7,7 +7,7 @@ Gebaut für **Hochkant-Monitore** (1080×1920, 1440×2560). Auf Quer-Monitoren a
 ## Funktionen
 
 - **Themenbereiche**: Ihr legt sie selbst an, benennt sie direkt in der Seitenleiste oder in der Überschrift um, wählt Symbol und Farbe und sortiert per Drag & Drop. Admins können Themen archivieren und löschen.
-- **Einträge**: Editor mit Überschriften, Listen, Tabellen, Links und Zitaten. Bilder und Excel-/CSV-Dateien (bis 25 MB) lassen sich per Drag & Drop, Einfügen oder Button hochladen; Excel-Dateien erscheinen als Anhang mit Download-Button. Änderungen werden automatisch gespeichert, der Versionsverlauf lässt sich wiederherstellen. Dazu kommen Anpinnen, Favoriten und Verschieben in ein anderes Thema.
+- **Einträge**: Editor mit Überschriften, Listen, Tabellen, Links und Zitaten. Bilder und Excel-/CSV-Dateien (bis 25 MB) lassen sich per Drag & Drop, Einfügen oder Button hochladen; Excel-Dateien erscheinen als Anhang mit Download-Button. Über „Foto mit Handy“ erscheint ein QR-Code (15 Min. gültig): Handy scannen, Foto aufnehmen, das Bild landet automatisch im Eintrag – ohne Login am Handy. Änderungen werden automatisch gespeichert, der Versionsverlauf lässt sich wiederherstellen. Dazu kommen Anpinnen, Favoriten und Verschieben in ein anderes Thema.
 - **Suche** (unten, `Strg K` oder `/`):
   - *Standard*: Volltextsuche über Einträge, Themen und Personal. Sie nutzt die deutsche Wortstammsuche, verzeiht Tippfehler, hebt Treffer hervor und lässt sich auf das aktuelle Thema einschränken.
   - *KI-Schalter*: Claude durchsucht die Wissensbasis selbstständig und antwortet mit Quellen-Links. Der Schalter ist nur aktiv, wenn `ANTHROPIC_API_KEY` gesetzt ist. Es gibt ein Tageslimit pro Nutzer.
