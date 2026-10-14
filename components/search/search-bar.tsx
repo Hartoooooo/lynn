@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowUp, CornerDownLeft, FileText, Loader2, Search, Sparkles, Square, User, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { SearchHit } from "@/lib/database.types";
@@ -33,6 +33,9 @@ function hitHref(hit: SearchHit) {
 export function SearchBar({ aiEnabled, topics }: { aiEnabled: boolean; topics: NavTopic[] }) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  // Auf dem Handy auf der Dienstplan-Seite ausblenden (Platz für den Plan)
+  const hideOnMobile = pathname === "/personal" && searchParams.get("tab") !== "ansprechpartner" && !searchParams.get("p");
   const inputRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -242,7 +245,7 @@ export function SearchBar({ aiEnabled, topics }: { aiEnabled: boolean; topics: N
   const aiBusy = Boolean(ai && !ai.done);
 
   return (
-    <div className="pointer-events-none fixed bottom-0 left-[var(--sidebar-w)] right-0 z-40 px-6 pb-5 pt-8 max-sm:px-3 max-sm:pb-3 [background:linear-gradient(to_top,var(--bg)_55%,transparent)]">
+    <div className={cn("pointer-events-none fixed bottom-0 left-[var(--sidebar-w)] right-0 z-40 px-6 pb-5 pt-8 max-sm:px-3 max-sm:pb-3 [background:linear-gradient(to_top,var(--bg)_55%,transparent)]", hideOnMobile && "max-sm:hidden")}>
       <div className="pointer-events-auto relative mx-auto max-w-[760px]">
         {showPanel && (
           <div
