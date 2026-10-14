@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarDays, ChevronLeft, ChevronRight, History, Info, Upload } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, History, Upload } from "lucide-react";
 import { Button, EmptyState } from "@/components/ui";
+import { useToast } from "@/components/toast";
+import { createClient } from "@/lib/supabase/client";
 import {
   currentWeekIndex,
   DAYS_SHORT,
@@ -47,6 +49,47 @@ export function RosterView({
   const [importOpen, setImportOpen] = useState(false);
 
   useEffect(() => setVersion(initialVersion), [initialVersion]);
+
+  // Live-Update: Bei jedem Tausch/Import steigt roster_meta.version → Daten neu laden.
+  const toast = useToast();
+  const versionRef = useRef(initialVersion);
+  versionRef.current = version;
+  useEffect(() => {
+    const supabase = createClient();
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let cancelled = false;
+    // Realtime braucht das Login-Token, sonst filtert RLS die Änderungen heraus.
+    const { data: authSub } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) void supabase.realtime.setAuth(session.access_token);
+    });
+    void (async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (cancelled) return;
+      if (session) await supabase.realtime.setAuth(session.access_token);
+      channel = supabase
+        .channel("roster-live")
+        .on("postgres_changes", { event: "UPDATE", schema: "public", table: "roster_meta" }, (payload) => {
+          const next = (payload.new as { version?: number }).version;
+          if (typeof next === "number" && next !== versionRef.current) {
+            setVersion(next);
+            router.refresh();
+            toast("Dienstplan wurde aktualisiert");
+          }
+        })
+        .subscribe();
+    })();
+    // Fallback: beim Zurückkehren in den Tab aktualisieren (z. B. nach Standby)
+    const onVisible = () => document.visibilityState === "visible" && router.refresh();
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVisible);
+      authSub.subscription.unsubscribe();
+      if (channel) void supabase.removeChannel(channel);
+    };
+  }, [router, toast]);
   useEffect(() => {
     try {
       const stored = localStorage.getItem(WHO_KEY);
@@ -131,12 +174,6 @@ export function RosterView({
             </Button>
           </div>
 
-          {week.hint && (
-            <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-border bg-surface px-4 py-3 text-sm text-text-2">
-              <Info size={16} className="mt-0.5 shrink-0 text-accent" />
-              {week.hint}
-            </div>
-          )}
 
           {!who && (
             <p className="mt-4 rounded-xl border border-dashed border-border px-4 py-3 text-sm text-muted">
