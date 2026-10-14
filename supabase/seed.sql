@@ -3,7 +3,6 @@
 do $$
 declare
   t_handel uuid; t_order uuid; t_kosten uuid; t_compliance uuid; t_it uuid;
-  p_anna uuid; p_jonas uuid; p_mira uuid; p_felix uuid;
 begin
   if exists (select 1 from public.topics) then
     return;
@@ -61,25 +60,5 @@ begin
      jsonb_build_object('type','paragraph','content',jsonb_build_array(jsonb_build_object('type','text','text','Notfall-Orders laufen über das Telefonbuch-Verfahren.')))
    )), false);
 
-  insert into public.people (name, position, department, email, phone, tags, bio) values
-    ('Anna Berger', 'Senior Händlerin', 'Handel', 'anna.berger@example.com', '+49 69 1234-101', '{Xetra,Ordertypen,Auktionen}', 'Ansprechpartnerin für alle Fragen rund um Orderausführung.')
-    returning id into p_anna;
-  insert into public.people (name, position, department, email, phone, tags, bio) values
-    ('Jonas Wolf', 'Compliance Officer', 'Compliance', 'jonas.wolf@example.com', '+49 69 1234-202', '{Mitarbeitergeschäfte,Insiderrecht,MiFID}', '')
-    returning id into p_jonas;
-  insert into public.people (name, position, department, email, phone, tags, bio) values
-    ('Mira Schulz', 'Controllerin', 'Finanzen', 'mira.schulz@example.com', '+49 69 1234-303', '{Gebühren,Abrechnung}', '')
-    returning id into p_mira;
-  insert into public.people (name, position, department, email, phone, tags, bio) values
-    ('Felix Brandt', 'Systemadministrator', 'IT', 'felix.brandt@example.com', '+49 69 1234-404', '{Ordersystem,Zugänge,Störungen}', '')
-    returning id into p_felix;
-
-  insert into public.topic_contacts (topic_id, person_id, label) values
-    (t_handel, p_anna, 'Hauptansprechpartnerin'),
-    (t_order, p_anna, 'Hauptansprechpartnerin'),
-    (t_compliance, p_jonas, 'Hauptansprechpartner'),
-    (t_kosten, p_mira, 'Hauptansprechpartnerin'),
-    (t_it, p_felix, 'Hauptansprechpartner'),
-    (t_it, p_anna, 'Vertretung');
 end;
 $$;
