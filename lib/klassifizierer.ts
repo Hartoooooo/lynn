@@ -10,6 +10,8 @@
 // deshalb die Namensregel-Logik plus – falls die ISIN bereits in der Datenbank
 // liegt – deren gespeicherte Zuordnung (siehe API-Route).
 
+import mapping from "@/lib/klassifizierer-mapping.json";
+
 export type Dimension = "strategie" | "thema" | "region";
 export type Membership = { ueber: string; unter: string };
 
@@ -61,6 +63,32 @@ export const RULES: Rule[] = [
   // ---- STRATEGIE: Hebel ----
   { id: "leverage", kws: ["LEVERAGE SHARES","3X ","2X ","5X ","-1X","-2X","-3X","-5X"," SHORT ","DAILY LEVERAGED","DAILY SHORT","LEVERAGED ","INVERSE"], excl: [], dim: "strategie", ueber: "Leverage ETPs", unter: "Leverage Shares" },
 ];
+
+// Feste Mappings aus der Mapping-Excel: yfinance industry/industryKey bzw. ETF-category → (Überkat, Unterkat).
+const MAPPING = mapping as unknown as {
+  industry: Record<string, [string, string]>;
+  category: Record<string, [string, string]>;
+};
+
+/** Normalisierung wie im Python-Skript: Kleinbuchstaben, nur a-z0-9. */
+function norm(s: string | null | undefined): string {
+  return (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+// Zu grobe yfinance-Kategorien, die NICHT als feine Zuordnung zählen (Stufe 1b).
+const GROB = new Set(
+  [
+    "natural resources",
+    "focused region",
+    "miscellaneous sector",
+    "commodities focused",
+    "equity precious metals",
+    "large blend",
+    "large growth",
+    "small blend",
+    "mid-cap growth",
+  ].map(norm),
+);
 
 /** Hebelfaktor als vorzeichenbehaftete Ganzzahl; Short/Inverse → negativ. null wenn keiner. */
 export function hebelAusName(name: string | null | undefined): number | null {
@@ -128,26 +156,54 @@ export type Classification = {
   memberships: Membership[];
 };
 
+export type ClassifyInput = {
+  name?: string | null;
+  /** yfinance info['industry'] (nur Aktien) */
+  industry?: string | null;
+  /** yfinance info['industryKey'] (Slug, nur Aktien) */
+  industryKey?: string | null;
+  /** yfinance info['category'] (Fondskategorie, nur ETFs/ETPs) */
+  category?: string | null;
+};
+
 /**
- * Klassifiziert anhand des Wertpapiernamens (Stufe-2-Logik des Python-Skripts).
- * Liefert Haupt-Kategorie (memberships[0]) plus Nebenkategorien, Hebel und Underlying.
+ * Vollständige 2-stufige/hybride Klassifizierung wie klassifizierer.py – GENAU EINE Kategorie:
+ * Stufe 1 yfinance (Aktie→industry, ETF→feine category), Stufe 2 Namensregeln (Thema>Region),
+ * dann Hebel, dann grobe category. Liefert zusätzlich Mehrfach-Mitgliedschaften und Underlying.
  */
-export function klassifiziereNachName(name: string | null | undefined): Classification {
+export function klassifiziere({ name, industry, industryKey, category }: ClassifyInput): Classification {
   const hebel = hebelAusName(name);
 
-  // Emittent 'Leverage Shares' → IMMER Leverage ETPs, Underlying separat
+  // ---- Aktie: ausschließlich über industry (kein Hebel, keine Mehrfach-Logik) ----
+  if (industry) {
+    const hit = MAPPING.industry[norm(industryKey)] ?? MAPPING.industry[norm(industry)];
+    if (hit) {
+      const kat = { ueber: hit[0], unter: hit[1] };
+      return { kategorie: kat, hebel: null, quelle: "yfinance industry", underlying: "", memberships: [kat] };
+    }
+  }
+
+  // ---- Emittent 'Leverage Shares' → IMMER Leverage ETPs, Underlying separat ----
   if (name && name.toUpperCase().includes("LEVERAGE SHARES")) {
     const kat = { ueber: "Leverage ETPs", unter: "Leverage Shares" };
     return { kategorie: kat, hebel, quelle: "Leverage Shares (Emittent)", underlying: underlyingAusName(name), memberships: [kat] };
   }
 
+  // ---- ETF/ETP/Fonds ----
   const { strat, thema, region } = nameDimensionHits(name);
   const unterl = dedup([...thema, ...region]); // Underlyings (Thema vor Region)
   const istLeverage = strat.length > 0 || hebel !== null;
 
+  const normCat = norm(category);
+  const fineCat = category && !GROB.has(normCat) ? MAPPING.category[normCat] : undefined;
+  const coarseCat = category ? MAPPING.category[normCat] : undefined;
+
   let kat: Membership | null;
   let quelle: string;
-  if (thema.length) {
+  if (fineCat) {
+    kat = { ueber: fineCat[0], unter: fineCat[1] };
+    quelle = "yfinance category";
+  } else if (thema.length) {
     kat = thema[0]!;
     quelle = "Namensregel (Thema)";
   } else if (region.length) {
@@ -156,6 +212,9 @@ export function klassifiziereNachName(name: string | null | undefined): Classifi
   } else if (istLeverage) {
     kat = strat.length ? strat[0]! : { ueber: "Leverage ETPs", unter: "Leverage Shares" };
     quelle = "Leverage/Option (Einzel-Underlying)";
+  } else if (coarseCat) {
+    kat = { ueber: coarseCat[0], unter: coarseCat[1] };
+    quelle = "yfinance category (grob)";
   } else {
     kat = null;
     quelle = "KEINE ZUORDNUNG";
@@ -164,11 +223,14 @@ export function klassifiziereNachName(name: string | null | undefined): Classifi
   const underlying = kat && kat.ueber === "Leverage ETPs" ? underlyingAusName(name) : "";
 
   // Mehrfach-Mitgliedschaft: Hauptkategorie zuerst, dann die übrigen Dimensionen.
-  const memberships = kat
-    ? dedup([kat, ...strat, ...unterl])
-    : [];
+  const memberships = kat ? dedup([kat, ...strat, ...unterl]) : [];
 
   return { kategorie: kat, hebel, quelle, underlying, memberships };
+}
+
+/** Kurzform: Klassifizierung allein über den Wertpapiernamen (Stufe 2). */
+export function klassifiziereNachName(name: string | null | undefined): Classification {
+  return klassifiziere({ name });
 }
 
 // Klassifizierer-Oberkategorien → tatsächliche Blattnamen der Importliste.
