@@ -289,8 +289,64 @@ export type Database = {
         };
         Relationships: Rel[];
       };
+      security_categories: {
+        Row: { id: string; name: string; slug: string; sort_order: number; created_at: string };
+        Insert: { id?: string; name: string; slug: string; sort_order?: number; created_at?: string };
+        Update: { id?: string; name?: string; slug?: string; sort_order?: number };
+        Relationships: Rel[];
+      };
+      securities: {
+        Row: {
+          id: string;
+          category_id: string;
+          subcategory: string;
+          wkn: string;
+          name: string;
+          isin: string;
+          kuerzel: string;
+          hebel: number | null;
+          underlying_name: string;
+          underlying_isin: string;
+          source: string;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          category_id: string;
+          subcategory?: string;
+          wkn?: string;
+          name?: string;
+          isin?: string;
+          kuerzel?: string;
+          hebel?: number | null;
+          underlying_name?: string;
+          underlying_isin?: string;
+          source?: string;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          category_id?: string;
+          subcategory?: string;
+          wkn?: string;
+          name?: string;
+          isin?: string;
+          kuerzel?: string;
+          hebel?: number | null;
+          underlying_name?: string;
+          underlying_isin?: string;
+          source?: string;
+        };
+        Relationships: Rel[];
+      };
     };
-    Views: { [_ in never]: never };
+    Views: {
+      security_category_overview: {
+        Row: { id: string; name: string; slug: string; sort_order: number; total: number; subcategory_count: number };
+        Relationships: Rel[];
+      };
+    };
     Functions: {
       consume_ai_quota: { Args: { daily_limit: number }; Returns: boolean };
       mobile_session_expires: { Args: { session: string }; Returns: string | null };

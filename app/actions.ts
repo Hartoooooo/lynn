@@ -410,6 +410,155 @@ export async function applyRosterImport(weeks: ImportedWeek[], names: string[]) 
   return { ok: true as const };
 }
 
+// ---------------------------------------------------------------------------
+// Wertpapier-Kategorien: Importliste laden (aus der beigefügten Excel generiert)
+// ---------------------------------------------------------------------------
+
+type SeedRow = [string, string, string, string, string, string, number | null, string, string];
+
+/** Lädt die gebündelte Kategorienliste in die Datenbank (idempotent: Dubletten werden übersprungen). */
+export async function importKategorien() {
+  const { supabase } = await requireEditor();
+  const seed = (await import("@/lib/kategorien-seed.json")).default as {
+    categories: { name: string; slug: string; sort_order: number }[];
+    rows: SeedRow[];
+  };
+
+  // 1) Oberkategorien anlegen (vorhandene bleiben unberührt).
+  const { error: catErr } = await supabase
+    .from("security_categories")
+    .upsert(seed.categories, { onConflict: "slug", ignoreDuplicates: true });
+  if (catErr) return { ok: false as const, message: catErr.message };
+
+  const { data: cats } = await supabase.from("security_categories").select("id, slug");
+  const idBySlug = new Map((cats ?? []).map((c) => [c.slug, c.id]));
+
+  // 2) Bereits vorhandene (Kategorie + ISIN) laden, um Dubletten zu überspringen.
+  const existing = new Set<string>();
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase
+      .from("securities")
+      .select("category_id, isin")
+      .neq("isin", "")
+      .range(from, from + 999);
+    if (error) break;
+    for (const r of data ?? []) existing.add(`${r.category_id}:${r.isin}`);
+    if (!data || data.length < 1000) break;
+  }
+
+  // 3) Zu importierende Zeilen aufbauen und filtern.
+  const seen = new Set<string>();
+  const toInsert = [];
+  for (const [slug, sub, wkn, name, isin, kuerzel, hebel, uname, uisin] of seed.rows) {
+    const categoryId = idBySlug.get(slug);
+    if (!categoryId) continue;
+    if (isin) {
+      const key = `${categoryId}:${isin}`;
+      if (existing.has(key) || seen.has(key)) continue;
+      seen.add(key);
+    }
+    toInsert.push({
+      category_id: categoryId,
+      subcategory: sub,
+      wkn,
+      name,
+      isin,
+      kuerzel,
+      hebel,
+      underlying_name: uname,
+      underlying_isin: uisin,
+      source: "excel",
+    });
+  }
+
+  // 4) In Blöcken einfügen.
+  let inserted = 0;
+  for (let i = 0; i < toInsert.length; i += 500) {
+    const batch = toInsert.slice(i, i + 500);
+    const { error } = await supabase.from("securities").insert(batch);
+    if (error) return { ok: false as const, inserted, message: error.message };
+    inserted += batch.length;
+  }
+
+  revalidatePath("/kategorien");
+  return { ok: true as const, inserted, skipped: seed.rows.length - toInsert.length, categories: seed.categories.length };
+}
+
+// ---------------------------------------------------------------------------
+// Wertpapier-Kategorien: Klassifizierung speichern
+// ---------------------------------------------------------------------------
+
+export type ClassificationInput = {
+  isin: string;
+  wkn: string;
+  name: string;
+  kuerzel: string;
+  categoryName: string;
+  subcategory: string;
+  hebel: number | null;
+  underlyingName: string;
+  underlyingIsin: string;
+};
+
+/** Speichert klassifizierte Wertpapiere in die passenden Kategorien (überspringt Dubletten). */
+export async function saveClassifications(items: ClassificationInput[]) {
+  const { supabase } = await requireEditor();
+  if (!items.length) return { ok: true as const, inserted: 0, skipped: 0 };
+
+  const { data: cats } = await supabase.from("security_categories").select("id, name");
+  const byName = new Map((cats ?? []).map((c) => [c.name, c.id]));
+
+  // Gültige Einträge auf existierende Kategorien abbilden.
+  const rows = items
+    .map((it) => {
+      const categoryId = byName.get(it.categoryName);
+      if (!categoryId) return null;
+      return {
+        category_id: categoryId,
+        subcategory: it.subcategory.trim(),
+        wkn: it.wkn.trim(),
+        name: it.name.trim(),
+        isin: it.isin.trim().toUpperCase(),
+        kuerzel: it.kuerzel.trim(),
+        hebel: it.hebel,
+        underlying_name: it.underlyingName.trim(),
+        underlying_isin: it.underlyingIsin.trim().toUpperCase(),
+        source: "klassifizierer",
+      };
+    })
+    .filter((r): r is NonNullable<typeof r> => r !== null);
+
+  if (!rows.length) return { ok: false as const, inserted: 0, skipped: 0, message: "Keine gültige Kategorie zugeordnet." };
+
+  // Bereits vorhandene (Kategorie + ISIN) herausfiltern.
+  const withIsin = rows.filter((r) => r.isin);
+  const existing = new Set<string>();
+  if (withIsin.length) {
+    const { data } = await supabase
+      .from("securities")
+      .select("category_id, isin")
+      .in("isin", withIsin.map((r) => r.isin));
+    for (const e of data ?? []) existing.add(`${e.category_id}:${e.isin}`);
+  }
+
+  const seen = new Set<string>();
+  const toInsert = rows.filter((r) => {
+    const key = `${r.category_id}:${r.isin}`;
+    if (r.isin && (existing.has(key) || seen.has(key))) return false;
+    if (r.isin) seen.add(key);
+    return true;
+  });
+
+  const skipped = rows.length - toInsert.length;
+  if (toInsert.length) {
+    const { error } = await supabase.from("securities").insert(toInsert);
+    if (error) return { ok: false as const, inserted: 0, skipped, message: error.message };
+  }
+
+  revalidatePath("/kategorien");
+  return { ok: true as const, inserted: toInsert.length, skipped };
+}
+
 export async function setHaShift(input: { weekId: string; person: string; day: number; value: string | null }) {
   const supabase = await createClient();
   const { error } = await supabase.rpc("roster_set_ha", {
