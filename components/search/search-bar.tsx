@@ -167,7 +167,8 @@ export function SearchBar({ aiEnabled, topics }: { aiEnabled: boolean; topics: N
   const flat = useMemo(() => grouped.flatMap((g) => g.items), [grouped]);
   // Navigierbare Liste: zuerst Wertpapiere, dann die übrigen Treffer.
   const navCount = securities.length + flat.length;
-  const secHref = (s: SecurityHit) => (s.category ? `/kategorien?k=${s.category.slug}` : "/kategorien");
+  const secHref = (s: SecurityHit) =>
+    s.category ? `/kategorien?k=${s.category.slug}&s=${s.id}` : `/kategorien?s=${s.id}`;
 
   const askAi = useCallback(
     async (question: string) => {

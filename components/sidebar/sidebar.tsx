@@ -92,7 +92,7 @@ export function Sidebar({
     startTransition(() => updateTopic(id, { name: trimmed }));
   }
 
-  const navLink = (href: string, label: string, icon: React.ReactNode) => {
+  const navLink = (href: string, label: string, icon: React.ReactNode, badge?: string) => {
     const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
     return (
       <Link
@@ -106,6 +106,11 @@ export function Sidebar({
       >
         {icon}
         {!collapsed && <span className="truncate">{label}</span>}
+        {!collapsed && badge && (
+          <span className="ml-auto shrink-0 rounded-md bg-surface-3 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-faint">
+            {badge}
+          </span>
+        )}
       </Link>
     );
   };
@@ -132,7 +137,7 @@ export function Sidebar({
         {navLink("/", "Start", <Home size={17} />)}
         {navLink("/personal", "Personal", <Users size={17} />)}
         {navLink("/favoriten", "Favoriten", <Star size={17} />)}
-        {navLink("/kategorien", "Kategorien", <FolderTree size={17} />)}
+        {navLink("/kategorien", "Kategorien", <FolderTree size={17} />, "EIX B")}
       </nav>
 
       <div className={cn("mt-6 flex items-center px-4 pb-1.5", collapsed && "justify-center px-0")}>

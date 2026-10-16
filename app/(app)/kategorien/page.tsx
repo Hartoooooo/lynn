@@ -55,7 +55,7 @@ export default async function KategorienPage({
 
   if (tab === "kategorisieren") {
     return (
-      <div className="mx-auto max-w-[1000px] px-8 pt-12 max-[900px]:px-5 max-sm:px-4 max-sm:pt-6">
+      <div className="mx-auto max-w-[1400px] px-8 pt-12 max-[900px]:px-5 max-sm:px-4 max-sm:pt-6">
         <Header />
         {tabs}
         <ClassifyPanel categories={overview.map((c) => c.name)} canEdit={editable} />
@@ -77,7 +77,7 @@ export default async function KategorienPage({
   }
 
   return (
-    <div className="mx-auto max-w-[1000px] px-8 pt-12 max-[900px]:px-5 max-sm:px-4 max-sm:pt-6">
+    <div className="mx-auto max-w-[1400px] px-8 pt-12 max-[900px]:px-5 max-sm:px-4 max-sm:pt-6">
       <Header />
       {tabs}
       <CategoriesView overview={overview} selected={selected} rows={rows} canEdit={editable} />

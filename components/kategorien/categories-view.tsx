@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Download, FileSpreadsheet, FolderTree, Loader2, Search, Upload } from "lucide-react";
 import { importKategorien } from "@/app/actions";
 import { useToast } from "@/components/toast";
@@ -67,8 +68,27 @@ export function CategoriesView({
   canEdit: boolean;
 }) {
   const toast = useToast();
+  const searchParams = useSearchParams();
+  const highlightId = searchParams.get("s");
   const [query, setQuery] = useState("");
   const [importing, startImport] = useTransition();
+
+  // Aus der zentralen Suche angesprungenes Wertpapier: zur Zeile scrollen und kurz markieren.
+  useEffect(() => {
+    if (!highlightId) return;
+    const el = document.getElementById(`sec-${highlightId}`);
+    if (!el) return;
+    const t = setTimeout(() => {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add("row-flash");
+    }, 60);
+    const t2 = setTimeout(() => el.classList.remove("row-flash"), 2200);
+    return () => {
+      clearTimeout(t);
+      clearTimeout(t2);
+      el.classList.remove("row-flash");
+    };
+  }, [highlightId, rows]);
 
   const totalAll = overview.reduce((sum, c) => sum + c.total, 0);
 
@@ -165,7 +185,7 @@ export function CategoriesView({
       {totalAll > 0 && (
       <>
       {/* Kategorie-Kacheln */}
-      <div className="mb-8 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+      <div className="mb-8 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         {overview.map((c) => {
           const active = selected?.id === c.id;
           return (
@@ -284,7 +304,7 @@ function SecurityTable({ cols, items }: { cols: ColKey[]; items: Security[] }) {
         </thead>
         <tbody>
           {items.map((r) => (
-            <tr key={r.id} className="border-t border-border hover:bg-surface-2/50">
+            <tr id={`sec-${r.id}`} key={r.id} className="scroll-mt-24 border-t border-border hover:bg-surface-2/50">
               {cols.map((k) => (
                 <td
                   key={k}

@@ -317,6 +317,20 @@ mark.hit {
   to { transform: translateY(0); opacity: 1; }
 }
 
+/* Aus der Suche angesprungene Tabellenzeile kurz hervorheben */
+@keyframes row-flash {
+  0%, 100% { background: transparent; }
+  12%, 55% { background: var(--accent-soft); }
+}
+
+tr.row-flash > td {
+  animation: row-flash 2.2s ease-in-out;
+}
+
+tr.row-flash > td:first-child {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
 /* -------------------------------------------------------------------------- */
 /* Handy (< 640px): Seitenleiste als Drawer, Kopfzeile mit Menü               */
 /* -------------------------------------------------------------------------- */
