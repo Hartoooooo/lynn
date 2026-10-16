@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ArrowUp, CornerDownLeft, FileText, Loader2, Search, Sparkles, Square, User, X } from "lucide-react";
+import { ArrowUp, CandlestickChart, CornerDownLeft, FileText, Loader2, Search, Sparkles, Square, User, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { SearchHit } from "@/lib/database.types";
 import { TopicIcon } from "@/components/topic-icon";
@@ -13,6 +13,18 @@ import { Markdown, Snippet } from "./markdown";
 
 type Mode = "text" | "ai";
 type Source = { id: string; title: string; href: string; topic: string };
+type SecurityHit = {
+  id: string;
+  name: string;
+  isin: string;
+  wkn: string;
+  kuerzel: string;
+  hebel: number | null;
+  subcategory: string;
+  underlying_name: string;
+  underlying_isin: string;
+  category: { name: string; slug: string } | null;
+};
 type AiState = {
   question: string;
   status: string | null;
@@ -44,6 +56,7 @@ export function SearchBar({ aiEnabled, topics }: { aiEnabled: boolean; topics: N
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [hits, setHits] = useState<SearchHit[]>([]);
+  const [securities, setSecurities] = useState<SecurityHit[]>([]);
   const [loading, setLoading] = useState(false);
   const [active, setActive] = useState(0);
   const [scoped, setScoped] = useState(true);
@@ -108,6 +121,7 @@ export function SearchBar({ aiEnabled, topics }: { aiEnabled: boolean; topics: N
     const q = query.trim();
     if (!q) {
       setHits([]);
+      setSecurities([]);
       setLoading(false);
       return;
     }
@@ -115,13 +129,23 @@ export function SearchBar({ aiEnabled, topics }: { aiEnabled: boolean; topics: N
     let cancelled = false;
     const timer = setTimeout(async () => {
       const supabase = createClient();
-      const { data } = await supabase.rpc("search_all", {
-        q,
-        topic_filter: topicFilter?.id,
-        max_results: 30,
-      });
+      // Wertpapiere nur außerhalb eines Themen-Filters mitsuchen (sie gehören keinem Thema an).
+      const term = q.replace(/[,()*%\\]/g, " ").trim();
+      const [{ data }, secRes] = await Promise.all([
+        supabase.rpc("search_all", { q, topic_filter: topicFilter?.id, max_results: 30 }),
+        topicFilter?.id || !term
+          ? Promise.resolve({ data: [] as SecurityHit[] })
+          : supabase
+              .from("securities")
+              .select(
+                "id, name, isin, wkn, kuerzel, hebel, subcategory, underlying_name, underlying_isin, category:security_categories(name, slug)",
+              )
+              .or(`isin.ilike.*${term}*,wkn.ilike.*${term}*,kuerzel.ilike.*${term}*,name.ilike.*${term}*`)
+              .limit(12),
+      ]);
       if (cancelled) return;
       setHits(data ?? []);
+      setSecurities((secRes.data ?? []) as unknown as SecurityHit[]);
       setActive(0);
       setLoading(false);
     }, 180);
@@ -141,6 +165,9 @@ export function SearchBar({ aiEnabled, topics }: { aiEnabled: boolean; topics: N
     return groups.filter((g) => g.items.length);
   }, [hits]);
   const flat = useMemo(() => grouped.flatMap((g) => g.items), [grouped]);
+  // Navigierbare Liste: zuerst Wertpapiere, dann die übrigen Treffer.
+  const navCount = securities.length + flat.length;
+  const secHref = (s: SecurityHit) => (s.category ? `/kategorien?k=${s.category.slug}` : "/kategorien");
 
   const askAi = useCallback(
     async (question: string) => {
@@ -217,7 +244,15 @@ export function SearchBar({ aiEnabled, topics }: { aiEnabled: boolean; topics: N
       if (q) askAi(q);
       return;
     }
-    const hit = flat[active];
+    if (active < securities.length) {
+      const sec = securities[active];
+      if (sec) {
+        setOpen(false);
+        router.push(secHref(sec));
+      }
+      return;
+    }
+    const hit = flat[active - securities.length];
     if (hit) {
       setOpen(false);
       router.push(hitHref(hit));
@@ -230,14 +265,14 @@ export function SearchBar({ aiEnabled, topics }: { aiEnabled: boolean; topics: N
       inputRef.current?.blur();
       return;
     }
-    if (mode !== "text" || !flat.length) return;
+    if (mode !== "text" || !navCount) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setOpen(true);
-      setActive((a) => (a + 1) % flat.length);
+      setActive((a) => (a + 1) % navCount);
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      setActive((a) => (a - 1 + flat.length) % flat.length);
+      setActive((a) => (a - 1 + navCount) % navCount);
     }
   }
 
@@ -256,6 +291,8 @@ export function SearchBar({ aiEnabled, topics }: { aiEnabled: boolean; topics: N
               <TextResults
                 grouped={grouped}
                 flat={flat}
+                securities={securities}
+                secHref={secHref}
                 active={active}
                 loading={loading}
                 query={query}
@@ -321,7 +358,7 @@ export function SearchBar({ aiEnabled, topics }: { aiEnabled: boolean; topics: N
             placeholder={
               mode === "ai"
                 ? "Frag Lynn – z. B. „Was passiert bei einer Stop-Limit-Order?“"
-                : "Suchen in Themen, Einträgen und Personal …"
+                : "Suchen in Themen, Einträgen, Personal & Wertpapieren (ISIN) …"
             }
             className="h-10 min-w-0 flex-1 bg-transparent text-[15px] text-text placeholder:text-faint focus:outline-none"
             aria-label="Suche"
@@ -395,9 +432,19 @@ function AiToggle({ mode, enabled, onChange }: { mode: Mode; enabled: boolean; o
   );
 }
 
+function securitySubtitle(s: SecurityHit) {
+  const kat = s.category ? (s.subcategory ? `${s.category.name} / ${s.subcategory}` : s.category.name) : s.subcategory;
+  const parts = [s.isin, kat].filter(Boolean);
+  if (s.hebel !== null && s.hebel !== undefined) parts.push(`Hebel ${s.hebel > 0 ? "+" : ""}${s.hebel}`);
+  if (s.underlying_name) parts.push(`Underlying: ${s.underlying_name}`);
+  return parts.join(" · ");
+}
+
 function TextResults({
   grouped,
   flat,
+  securities,
+  secHref,
   active,
   loading,
   query,
@@ -408,6 +455,8 @@ function TextResults({
 }: {
   grouped: { label: string; kind: string; items: SearchHit[] }[];
   flat: SearchHit[];
+  securities: SecurityHit[];
+  secHref: (s: SecurityHit) => string;
   active: number;
   loading: boolean;
   query: string;
@@ -416,7 +465,7 @@ function TextResults({
   aiEnabled: boolean;
   onAskAi: () => void;
 }) {
-  if (!flat.length) {
+  if (!flat.length && !securities.length) {
     return (
       <div className="flex flex-col items-center gap-3 px-6 py-8 text-center text-sm text-muted">
         {loading ? (
@@ -440,13 +489,44 @@ function TextResults({
 
   return (
     <div className="p-2">
+      {securities.length > 0 && (
+        <div className="mb-1">
+          <div className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-faint">Wertpapiere</div>
+          {securities.map((s, i) => (
+            <Link
+              key={`sec-${s.id}`}
+              href={secHref(s)}
+              onClick={onPick}
+              onMouseEnter={() => onHover(i)}
+              className={cn(
+                "flex items-start gap-3 rounded-xl px-3 py-2.5 transition-colors",
+                i === active ? "bg-surface-3" : "hover:bg-surface-3/60",
+              )}
+            >
+              <span className="mt-0.5 shrink-0 text-muted">
+                <CandlestickChart size={16} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-2">
+                  <span className="truncate text-[14px] font-medium text-text">{s.name || s.isin}</span>
+                  {s.kuerzel && <span className="shrink-0 font-mono text-[11.5px] text-faint">{s.kuerzel}</span>}
+                </span>
+                <span className="mt-0.5 line-clamp-2 block text-[13px] leading-relaxed text-muted">
+                  {securitySubtitle(s)}
+                </span>
+              </span>
+              {i === active && <CornerDownLeft size={14} className="mt-1 shrink-0 text-faint" />}
+            </Link>
+          ))}
+        </div>
+      )}
       {grouped.map((group) => (
         <div key={group.kind} className="mb-1 last:mb-0">
           <div className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-faint">
             {group.label}
           </div>
           {group.items.map((hit) => {
-            const index = flat.indexOf(hit);
+            const index = securities.length + flat.indexOf(hit);
             return (
               <Link
                 key={`${hit.kind}-${hit.id}`}
