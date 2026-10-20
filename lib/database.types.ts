@@ -308,6 +308,7 @@ export type Database = {
           underlying_name: string;
           underlying_isin: string;
           source: string;
+          dataset: string;
           created_by: string | null;
           created_at: string;
         };
@@ -323,6 +324,7 @@ export type Database = {
           underlying_name?: string;
           underlying_isin?: string;
           source?: string;
+          dataset?: string;
           created_by?: string | null;
           created_at?: string;
         };
@@ -337,6 +339,7 @@ export type Database = {
           underlying_name?: string;
           underlying_isin?: string;
           source?: string;
+          dataset?: string;
         };
         Relationships: Rel[];
       };
@@ -349,6 +352,11 @@ export type Database = {
     };
     Functions: {
       consume_ai_quota: { Args: { daily_limit: number }; Returns: boolean };
+      security_overview: {
+        Args: { p_dataset: string };
+        Returns: { id: string; name: string; slug: string; sort_order: number; total: number; subcategory_count: number }[];
+      };
+      security_dataset_counts: { Args: Record<string, never>; Returns: { dataset: string; total: number }[] };
       mobile_session_expires: { Args: { session: string }; Returns: string | null };
       roster_swap: {
         Args: {

@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import type { Json, UserRole } from "@/lib/database.types";
+import type { Database, Json, UserRole } from "@/lib/database.types";
+import { DEFAULT_DATASET, isDatasetKey } from "@/lib/datasets";
 import { parseRosterWorkbook, type ImportedWeek } from "@/lib/roster-import";
 import { createClient } from "@/lib/supabase/server";
 import { getSession, requireAdmin, requireEditor } from "@/lib/session";
@@ -411,20 +412,52 @@ export async function applyRosterImport(weeks: ImportedWeek[], names: string[]) 
 }
 
 // ---------------------------------------------------------------------------
-// Wertpapier-Kategorien: Importliste laden (aus der beigefügten Excel generiert)
+// Wertpapier-Kategorien: Listen (Datasets), Import & Klassifizierung speichern
 // ---------------------------------------------------------------------------
 
 type SeedRow = [string, string, string, string, string, string, number | null, string, string];
+type SecInsert = Database["public"]["Tables"]["securities"]["Insert"];
+type SupabaseServer = Awaited<ReturnType<typeof createClient>>;
 
-/** Lädt die gebündelte Kategorienliste in die Datenbank (idempotent: Dubletten werden übersprungen). */
-export async function importKategorien() {
+/**
+ * Fügt Wertpapiere in Blöcken ein. Verletzt ein Datensatz eine Unique-Regel
+ * (z. B. der alte globale (category,isin)-Index, solange er noch existiert),
+ * wird der Block zeilenweise eingefügt und die Konflikt-Zeilen übersprungen.
+ */
+async function insertSecurities(
+  supabase: SupabaseServer,
+  rows: SecInsert[],
+): Promise<{ inserted: number; skipped: number; error?: string }> {
+  let inserted = 0;
+  let skipped = 0;
+  for (let i = 0; i < rows.length; i += 500) {
+    const batch = rows.slice(i, i + 500);
+    const { error } = await supabase.from("securities").insert(batch);
+    if (!error) {
+      inserted += batch.length;
+      continue;
+    }
+    if (error.code !== "23505") return { inserted, skipped, error: error.message };
+    for (const row of batch) {
+      const { error: e2 } = await supabase.from("securities").insert(row);
+      if (!e2) inserted++;
+      else if (e2.code === "23505") skipped++;
+      else return { inserted, skipped, error: e2.message };
+    }
+  }
+  return { inserted, skipped };
+}
+
+/** Lädt die gebündelte EIX-B-Liste in die gewählte Liste (idempotent: Dubletten übersprungen). */
+export async function importKategorien(dataset: string = DEFAULT_DATASET) {
   const { supabase } = await requireEditor();
+  const ds = isDatasetKey(dataset) ? dataset : DEFAULT_DATASET;
   const seed = (await import("@/lib/kategorien-seed.json")).default as {
     categories: { name: string; slug: string; sort_order: number }[];
     rows: SeedRow[];
   };
 
-  // 1) Oberkategorien anlegen (vorhandene bleiben unberührt).
+  // 1) Oberkategorien anlegen (vorhandene bleiben unberührt; Kategorien sind listenübergreifend).
   const { error: catErr } = await supabase
     .from("security_categories")
     .upsert(seed.categories, { onConflict: "slug", ignoreDuplicates: true });
@@ -433,12 +466,13 @@ export async function importKategorien() {
   const { data: cats } = await supabase.from("security_categories").select("id, slug");
   const idBySlug = new Map((cats ?? []).map((c) => [c.slug, c.id]));
 
-  // 2) Bereits vorhandene (Kategorie + ISIN) laden, um Dubletten zu überspringen.
+  // 2) Bereits in DIESER Liste vorhandene (Kategorie + ISIN) laden, um Dubletten zu überspringen.
   const existing = new Set<string>();
   for (let from = 0; ; from += 1000) {
     const { data, error } = await supabase
       .from("securities")
       .select("category_id, isin")
+      .eq("dataset", ds)
       .neq("isin", "")
       .range(from, from + 999);
     if (error) break;
@@ -448,7 +482,7 @@ export async function importKategorien() {
 
   // 3) Zu importierende Zeilen aufbauen und filtern.
   const seen = new Set<string>();
-  const toInsert = [];
+  const toInsert: SecInsert[] = [];
   for (const [slug, sub, wkn, name, isin, kuerzel, hebel, uname, uisin] of seed.rows) {
     const categoryId = idBySlug.get(slug);
     if (!categoryId) continue;
@@ -468,25 +502,21 @@ export async function importKategorien() {
       underlying_name: uname,
       underlying_isin: uisin,
       source: "excel",
+      dataset: ds,
     });
   }
 
-  // 4) In Blöcken einfügen.
-  let inserted = 0;
-  for (let i = 0; i < toInsert.length; i += 500) {
-    const batch = toInsert.slice(i, i + 500);
-    const { error } = await supabase.from("securities").insert(batch);
-    if (error) return { ok: false as const, inserted, message: error.message };
-    inserted += batch.length;
-  }
+  const res = await insertSecurities(supabase, toInsert);
+  if (res.error) return { ok: false as const, inserted: res.inserted, message: res.error };
 
   revalidatePath("/kategorien");
-  return { ok: true as const, inserted, skipped: seed.rows.length - toInsert.length, categories: seed.categories.length };
+  return {
+    ok: true as const,
+    inserted: res.inserted,
+    skipped: seed.rows.length - res.inserted,
+    categories: seed.categories.length,
+  };
 }
-
-// ---------------------------------------------------------------------------
-// Wertpapier-Kategorien: Klassifizierung speichern
-// ---------------------------------------------------------------------------
 
 export type ClassificationInput = {
   isin: string;
@@ -500,17 +530,17 @@ export type ClassificationInput = {
   underlyingIsin: string;
 };
 
-/** Speichert klassifizierte Wertpapiere in die passenden Kategorien (überspringt Dubletten). */
-export async function saveClassifications(items: ClassificationInput[]) {
+/** Speichert klassifizierte Wertpapiere in die gewählte Liste (überspringt Dubletten). */
+export async function saveClassifications(items: ClassificationInput[], dataset: string = DEFAULT_DATASET) {
   const { supabase } = await requireEditor();
+  const ds = isDatasetKey(dataset) ? dataset : DEFAULT_DATASET;
   if (!items.length) return { ok: true as const, inserted: 0, skipped: 0 };
 
   const { data: cats } = await supabase.from("security_categories").select("id, name");
   const byName = new Map((cats ?? []).map((c) => [c.name, c.id]));
 
-  // Gültige Einträge auf existierende Kategorien abbilden.
   const rows = items
-    .map((it) => {
+    .map((it): SecInsert | null => {
       const categoryId = byName.get(it.categoryName);
       if (!categoryId) return null;
       return {
@@ -524,20 +554,22 @@ export async function saveClassifications(items: ClassificationInput[]) {
         underlying_name: it.underlyingName.trim(),
         underlying_isin: it.underlyingIsin.trim().toUpperCase(),
         source: "klassifizierer",
+        dataset: ds,
       };
     })
-    .filter((r): r is NonNullable<typeof r> => r !== null);
+    .filter((r): r is SecInsert => r !== null);
 
   if (!rows.length) return { ok: false as const, inserted: 0, skipped: 0, message: "Keine gültige Kategorie zugeordnet." };
 
-  // Bereits vorhandene (Kategorie + ISIN) herausfiltern.
+  // Bereits in DIESER Liste vorhandene (Kategorie + ISIN) herausfiltern.
   const withIsin = rows.filter((r) => r.isin);
   const existing = new Set<string>();
   if (withIsin.length) {
     const { data } = await supabase
       .from("securities")
       .select("category_id, isin")
-      .in("isin", withIsin.map((r) => r.isin));
+      .eq("dataset", ds)
+      .in("isin", withIsin.map((r) => r.isin as string));
     for (const e of data ?? []) existing.add(`${e.category_id}:${e.isin}`);
   }
 
@@ -549,14 +581,12 @@ export async function saveClassifications(items: ClassificationInput[]) {
     return true;
   });
 
-  const skipped = rows.length - toInsert.length;
-  if (toInsert.length) {
-    const { error } = await supabase.from("securities").insert(toInsert);
-    if (error) return { ok: false as const, inserted: 0, skipped, message: error.message };
-  }
+  const preSkipped = rows.length - toInsert.length;
+  const res = await insertSecurities(supabase, toInsert);
+  if (res.error) return { ok: false as const, inserted: res.inserted, skipped: preSkipped, message: res.error };
 
   revalidatePath("/kategorien");
-  return { ok: true as const, inserted: toInsert.length, skipped };
+  return { ok: true as const, inserted: res.inserted, skipped: preSkipped + res.skipped };
 }
 
 export async function setHaShift(input: { weekId: string; person: string; day: number; value: string | null }) {

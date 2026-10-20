@@ -1,5 +1,6 @@
 import ExcelJS from "exceljs";
 import { NextResponse } from "next/server";
+import { DEFAULT_DATASET, isDatasetKey } from "@/lib/datasets";
 import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -36,6 +37,8 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const scope = url.searchParams.get("scope") || "all";
   const format = url.searchParams.get("format") === "csv" ? "csv" : "xlsx";
+  const dsParam = url.searchParams.get("dataset");
+  const dataset = isDatasetKey(dsParam) ? dsParam : DEFAULT_DATASET;
 
   let catQuery = supabase.from("security_categories").select("id, name, slug").order("sort_order");
   if (scope !== "all") catQuery = catQuery.eq("slug", scope);
@@ -50,6 +53,7 @@ export async function GET(request: Request) {
         .from("securities")
         .select("subcategory, wkn, name, isin, kuerzel, hebel, underlying_name, underlying_isin")
         .eq("category_id", categoryId)
+        .eq("dataset", dataset)
         .order("subcategory")
         .order("name")
         .range(from, from + PAGE - 1);
@@ -75,7 +79,7 @@ export async function GET(request: Request) {
         );
       }
     }
-    const filename = scope === "all" ? `kategorien_${stamp}.csv` : `${scope}_${stamp}.csv`;
+    const filename = scope === "all" ? `${dataset}_kategorien_${stamp}.csv` : `${dataset}_${scope}_${stamp}.csv`;
     return new Response("﻿" + lines.join("\r\n"), {
       headers: {
         "Content-Type": "text/csv; charset=utf-8",
@@ -111,7 +115,7 @@ export async function GET(request: Request) {
   }
 
   const buffer = await wb.xlsx.writeBuffer();
-  const filename = scope === "all" ? `kategorien_${stamp}.xlsx` : `${scope}_${stamp}.xlsx`;
+  const filename = scope === "all" ? `${dataset}_kategorien_${stamp}.xlsx` : `${dataset}_${scope}_${stamp}.xlsx`;
   return new Response(buffer, {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

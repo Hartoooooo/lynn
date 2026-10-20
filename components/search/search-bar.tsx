@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowUp, CandlestickChart, CornerDownLeft, FileText, Loader2, Search, Sparkles, Square, User, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { SearchHit } from "@/lib/database.types";
+import { datasetLabel } from "@/lib/datasets";
 import { TopicIcon } from "@/components/topic-icon";
 import type { NavTopic } from "@/components/sidebar/sidebar";
 import { cn } from "@/lib/utils";
@@ -23,6 +24,7 @@ type SecurityHit = {
   subcategory: string;
   underlying_name: string;
   underlying_isin: string;
+  dataset: string;
   category: { name: string; slug: string } | null;
 };
 type AiState = {
@@ -138,7 +140,7 @@ export function SearchBar({ aiEnabled, topics }: { aiEnabled: boolean; topics: N
           : supabase
               .from("securities")
               .select(
-                "id, name, isin, wkn, kuerzel, hebel, subcategory, underlying_name, underlying_isin, category:security_categories(name, slug)",
+                "id, name, isin, wkn, kuerzel, hebel, subcategory, underlying_name, underlying_isin, dataset, category:security_categories(name, slug)",
               )
               .or(`isin.ilike.*${term}*,wkn.ilike.*${term}*,kuerzel.ilike.*${term}*,name.ilike.*${term}*`)
               .limit(12),
@@ -167,8 +169,10 @@ export function SearchBar({ aiEnabled, topics }: { aiEnabled: boolean; topics: N
   const flat = useMemo(() => grouped.flatMap((g) => g.items), [grouped]);
   // Navigierbare Liste: zuerst Wertpapiere, dann die übrigen Treffer.
   const navCount = securities.length + flat.length;
-  const secHref = (s: SecurityHit) =>
-    s.category ? `/kategorien?k=${s.category.slug}&s=${s.id}` : `/kategorien?s=${s.id}`;
+  const secHref = (s: SecurityHit) => {
+    const dsq = s.dataset && s.dataset !== "EIX_B" ? `&ds=${s.dataset}` : "";
+    return s.category ? `/kategorien?k=${s.category.slug}&s=${s.id}${dsq}` : `/kategorien?s=${s.id}${dsq}`;
+  };
 
   const askAi = useCallback(
     async (question: string) => {
@@ -435,7 +439,7 @@ function AiToggle({ mode, enabled, onChange }: { mode: Mode; enabled: boolean; o
 
 function securitySubtitle(s: SecurityHit) {
   const kat = s.category ? (s.subcategory ? `${s.category.name} / ${s.subcategory}` : s.category.name) : s.subcategory;
-  const parts = [s.isin, kat].filter(Boolean);
+  const parts = [datasetLabel(s.dataset), s.isin, kat].filter(Boolean);
   if (s.hebel !== null && s.hebel !== undefined) parts.push(`Hebel ${s.hebel > 0 ? "+" : ""}${s.hebel}`);
   if (s.underlying_name) parts.push(`Underlying: ${s.underlying_name}`);
   return parts.join(" · ");

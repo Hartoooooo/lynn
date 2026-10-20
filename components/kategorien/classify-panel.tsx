@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { CheckCircle2, Database, Loader2, Sparkles, XCircle } from "lucide-react";
+import { useRef, useState, useTransition } from "react";
+import { CheckCircle2, Database, Loader2, Play, Sparkles, Square, XCircle } from "lucide-react";
 import { saveClassifications, type ClassificationInput } from "@/app/actions";
 import { useToast } from "@/components/toast";
 import { Button } from "@/components/ui";
@@ -20,48 +20,105 @@ type ApiResult = {
 };
 
 type Row = ApiResult & { include: boolean; category: string; subcategory: string };
+type Phase = "idle" | "running" | "paused" | "done";
 
-export function ClassifyPanel({ categories, canEdit }: { categories: string[]; canEdit: boolean }) {
+const BATCH = 20; // Tokens pro API-Aufruf
+const PAUSE_AT = 500; // Stopp (zum Prüfen/Speichern) nach so vielen Ergebnissen
+
+export function ClassifyPanel({
+  categories,
+  canEdit,
+  dataset,
+  datasetLabel,
+}: {
+  categories: string[];
+  canEdit: boolean;
+  dataset: string;
+  datasetLabel: string;
+}) {
   const toast = useToast();
   const [text, setText] = useState("");
-  const [rows, setRows] = useState<Row[] | null>(null);
-  const [classifying, setClassifying] = useState(false);
+  const [rows, setRows] = useState<Row[]>([]);
+  const [phase, setPhase] = useState<Phase>("idle");
+  const [processed, setProcessed] = useState(0);
+  const [total, setTotal] = useState(0);
+  const [savedTotal, setSavedTotal] = useState(0);
   const [saving, startSave] = useTransition();
 
-  async function classify() {
-    const inputs = text.split(/[\s,;]+/).map((s) => s.trim()).filter(Boolean);
-    if (!inputs.length) {
+  const queueRef = useRef<string[]>([]);
+  const cursorRef = useRef(0);
+  const rowsRef = useRef<Row[]>([]);
+  const stopRef = useRef(false);
+
+  async function classifyBatch(slice: string[]): Promise<Row[]> {
+    const res = await fetch("/api/kategorien/klassifizieren", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ inputs: slice }),
+    });
+    const data = (await res.json()) as { results?: ApiResult[]; error?: string };
+    if (!res.ok) throw new Error(data.error || "Klassifizierung fehlgeschlagen.");
+    return (data.results ?? []).map((r) => ({
+      ...r,
+      include: Boolean(r.ueber) && !r.exists,
+      category: r.ueber ?? "",
+      subcategory: r.unter,
+    }));
+  }
+
+  async function drive() {
+    setPhase("running");
+    try {
+      while (!stopRef.current && cursorRef.current < queueRef.current.length && rowsRef.current.length < PAUSE_AT) {
+        const slice = queueRef.current.slice(cursorRef.current, cursorRef.current + BATCH);
+        const got = await classifyBatch(slice);
+        rowsRef.current = [...rowsRef.current, ...got];
+        cursorRef.current += slice.length;
+        setRows(rowsRef.current);
+        setProcessed(cursorRef.current);
+      }
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Klassifizierung fehlgeschlagen.", "error");
+      setPhase("paused");
+      return;
+    }
+    if (stopRef.current) {
+      setPhase("paused");
+      return;
+    }
+    setPhase(cursorRef.current >= queueRef.current.length && rowsRef.current.length === 0 ? "done" : "paused");
+  }
+
+  function start() {
+    const tokens = [
+      ...new Set(
+        text
+          .split(/[\s,;]+/)
+          .map((s) => s.trim().toUpperCase())
+          .filter(Boolean),
+      ),
+    ];
+    if (!tokens.length) {
       toast("Bitte mindestens eine ISIN oder ein Kürzel eingeben.", "error");
       return;
     }
-    setClassifying(true);
-    setRows(null);
-    try {
-      const res = await fetch("/api/kategorien/klassifizieren", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ inputs }),
-      });
-      const data = (await res.json()) as { results?: ApiResult[]; error?: string };
-      if (!res.ok) throw new Error(data.error || "Klassifizierung fehlgeschlagen.");
-      const mapped: Row[] = (data.results ?? []).map((r) => ({
-        ...r,
-        include: Boolean(r.ueber) && !r.exists,
-        category: r.ueber ?? "",
-        subcategory: r.unter,
-      }));
-      setRows(mapped);
-      if (!mapped.length) toast("Keine Ergebnisse.", "error");
-    } catch (err) {
-      toast(err instanceof Error ? err.message : "Klassifizierung fehlgeschlagen.", "error");
-    } finally {
-      setClassifying(false);
-    }
+    queueRef.current = tokens;
+    cursorRef.current = 0;
+    rowsRef.current = [];
+    stopRef.current = false;
+    setRows([]);
+    setProcessed(0);
+    setTotal(tokens.length);
+    setSavedTotal(0);
+    drive();
   }
 
-  function save() {
-    if (!rows) return;
-    const items: ClassificationInput[] = rows
+  function stop() {
+    stopRef.current = true;
+  }
+
+  function saveAndContinue() {
+    const items: ClassificationInput[] = rowsRef.current
       .filter((r) => r.include && r.category)
       .map((r) => ({
         isin: r.isin,
@@ -79,69 +136,125 @@ export function ClassifyPanel({ categories, canEdit }: { categories: string[]; c
       return;
     }
     startSave(async () => {
-      const res = await saveClassifications(items);
-      if (res.ok) {
-        toast(
-          `${res.inserted} gespeichert${res.skipped ? `, ${res.skipped} übersprungen (bereits vorhanden)` : ""}.`,
-        );
-        // Gespeicherte als vorhanden markieren.
-        setRows((rs) =>
-          rs
-            ? rs.map((r) => (r.include && r.category ? { ...r, exists: true, include: false } : r))
-            : rs,
-        );
-      } else {
+      const res = await saveClassifications(items, dataset);
+      if (!res.ok) {
         toast(res.message ?? "Speichern fehlgeschlagen.", "error");
+        return;
+      }
+      setSavedTotal((n) => n + res.inserted);
+      toast(`${res.inserted} in ${datasetLabel} gespeichert${res.skipped ? `, ${res.skipped} übersprungen` : ""}.`);
+      rowsRef.current = [];
+      setRows([]);
+      if (cursorRef.current < queueRef.current.length) {
+        stopRef.current = false;
+        drive();
+      } else {
+        setPhase("done");
       }
     });
   }
 
-  const selectable = rows?.some((r) => r.ueber || r.exists);
-  const selectedCount = rows?.filter((r) => r.include && r.category).length ?? 0;
+  function reset() {
+    stopRef.current = true;
+    queueRef.current = [];
+    cursorRef.current = 0;
+    rowsRef.current = [];
+    setRows([]);
+    setProcessed(0);
+    setTotal(0);
+    setPhase("idle");
+  }
+
+  const selectedCount = rows.filter((r) => r.include && r.category).length;
+  const pct = total ? Math.round((processed / total) * 100) : 0;
+  const busy = phase === "running";
+  const inFlight = phase === "running" || phase === "paused" || saving;
 
   return (
     <div className="space-y-6">
       <div className="rounded-2xl border border-border bg-surface p-5">
-        <label htmlFor="isins" className="mb-1.5 block text-[13px] font-medium text-muted">
-          ISINs oder Kürzel (durch Leerzeichen, Komma oder Zeilenumbruch getrennt)
-        </label>
+        <div className="mb-1.5 flex items-center justify-between gap-3">
+          <label htmlFor="isins" className="block text-[13px] font-medium text-muted">
+            ISINs oder Kürzel (durch Leerzeichen, Komma oder Zeilenumbruch getrennt)
+          </label>
+          <span className="shrink-0 rounded-md bg-surface-3 px-2 py-0.5 text-[11.5px] font-medium text-muted">
+            Ziel: {datasetLabel}
+          </span>
+        </div>
         <textarea
           id="isins"
           value={text}
           onChange={(e) => setText(e.target.value)}
           rows={4}
-          placeholder={"IE00B4L5Y983\nXS2472196687\nUS37954Y8710"}
-          className="w-full resize-y rounded-[10px] border border-border bg-bg px-3 py-2 font-mono text-[13px] text-text placeholder:text-faint focus:border-accent focus:outline-none"
+          disabled={inFlight}
+          placeholder={"IE00B4L5Y983\nXS2472196687\nUS37954Y8710\n… beliebig viele – Stopp alle 500 zum Prüfen & Speichern"}
+          className="w-full resize-y rounded-[10px] border border-border bg-bg px-3 py-2 font-mono text-[13px] text-text placeholder:text-faint focus:border-accent focus:outline-none disabled:opacity-60"
         />
         <div className="mt-3 flex items-center justify-between gap-3">
           <p className="text-[12.5px] text-faint">
-            Klassifizierung nach denselben Regeln wie <span className="font-mono">klassifizierer.py</span> – bereits erfasste ISINs
-            übernehmen ihre gespeicherte Kategorie.
+            Läuft fortlaufend nach den Regeln von <span className="font-mono">klassifizierer.py</span> und pausiert alle{" "}
+            {PAUSE_AT} Ergebnisse.
           </p>
-          <Button variant="primary" onClick={classify} disabled={classifying}>
-            {classifying ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-            Klassifizieren
-          </Button>
+          {phase === "idle" || phase === "done" ? (
+            <Button variant="primary" onClick={start}>
+              <Play size={16} /> Start
+            </Button>
+          ) : busy ? (
+            <Button variant="secondary" onClick={stop}>
+              <Square size={14} /> Stopp
+            </Button>
+          ) : (
+            <Button variant="ghost" onClick={reset}>
+              Zurücksetzen
+            </Button>
+          )}
         </div>
+
+        {/* Fortschrittsbalken */}
+        {(phase === "running" || phase === "paused") && (
+          <div className="mt-4">
+            <div className="mb-1.5 flex items-center justify-between text-[12px] text-muted">
+              <span className="flex items-center gap-2">
+                {busy && <Loader2 size={13} className="animate-spin text-accent" />}
+                {processed.toLocaleString("de-DE")} / {total.toLocaleString("de-DE")} klassifiziert
+                {savedTotal > 0 && <span className="text-faint">· {savedTotal.toLocaleString("de-DE")} gespeichert</span>}
+              </span>
+              <span>{pct}%</span>
+            </div>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-surface-3">
+              <div className="h-full rounded-full bg-accent transition-[width] duration-300" style={{ width: `${pct}%` }} />
+            </div>
+          </div>
+        )}
       </div>
 
-      {rows && rows.length > 0 && (
+      {phase === "done" && rows.length === 0 && (
+        <div className="rounded-2xl border border-border bg-surface px-5 py-4 text-[13.5px] text-text-2">
+          Fertig – {savedTotal.toLocaleString("de-DE")} Einträge in {datasetLabel} gespeichert.
+        </div>
+      )}
+
+      {rows.length > 0 && (
         <div className="rounded-2xl border border-border">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
-            <h2 className="text-[15px] font-semibold">Ergebnisse ({rows.length})</h2>
+            <h2 className="text-[15px] font-semibold">
+              {phase === "paused" ? `Pausiert – ${rows.length} Ergebnisse prüfen` : `Ergebnisse (${rows.length})`}
+            </h2>
             {canEdit ? (
-              <Button variant="primary" size="sm" onClick={save} disabled={saving || selectedCount === 0}>
+              <Button variant="primary" size="sm" onClick={saveAndContinue} disabled={saving || busy || selectedCount === 0}>
                 {saving ? <Loader2 size={15} className="animate-spin" /> : <Database size={15} />}
-                {selectedCount > 0 ? `${selectedCount} speichern` : "In Datenbank speichern"}
+                {cursorRef.current < queueRef.current.length
+                  ? `${selectedCount} speichern & weiter`
+                  : `${selectedCount} speichern`}
               </Button>
             ) : (
               <span className="text-[12.5px] text-faint">Nur Redakteure können speichern.</span>
             )}
           </div>
-          <div className="overflow-x-auto">
+          <div className="max-h-[60dvh] overflow-auto">
             <table className="w-full border-collapse text-[13px]">
-              <thead>
-                <tr className="bg-surface text-left text-text-2">
+              <thead className="sticky top-0 bg-surface">
+                <tr className="text-left text-text-2">
                   {canEdit && <th className="w-10 px-3 py-2" />}
                   <th className="px-3 py-2 font-semibold">Eingabe</th>
                   <th className="px-3 py-2 font-semibold">Name</th>
@@ -161,7 +274,7 @@ export function ClassifyPanel({ categories, canEdit }: { categories: string[]; c
                           checked={r.include}
                           disabled={r.exists || !r.category}
                           onChange={(e) =>
-                            setRows((rs) => rs?.map((x, j) => (j === i ? { ...x, include: e.target.checked } : x)) ?? rs)
+                            setRows((rs) => rs.map((x, j) => (j === i ? { ...x, include: e.target.checked } : x)))
                           }
                           className="mt-0.5 size-4 accent-[var(--accent)]"
                           aria-label={`${r.input} speichern`}
@@ -176,9 +289,9 @@ export function ClassifyPanel({ categories, canEdit }: { categories: string[]; c
                           value={r.category}
                           onChange={(e) =>
                             setRows((rs) =>
-                              rs?.map((x, j) =>
+                              rs.map((x, j) =>
                                 j === i ? { ...x, category: e.target.value, include: Boolean(e.target.value) && !x.exists } : x,
-                              ) ?? rs,
+                              ),
                             )
                           }
                           disabled={r.exists}
@@ -202,7 +315,7 @@ export function ClassifyPanel({ categories, canEdit }: { categories: string[]; c
                         <input
                           value={r.subcategory}
                           onChange={(e) =>
-                            setRows((rs) => rs?.map((x, j) => (j === i ? { ...x, subcategory: e.target.value } : x)) ?? rs)
+                            setRows((rs) => rs.map((x, j) => (j === i ? { ...x, subcategory: e.target.value } : x)))
                           }
                           disabled={r.exists}
                           placeholder="—"
@@ -222,13 +335,7 @@ export function ClassifyPanel({ categories, canEdit }: { categories: string[]; c
                           r.exists ? "text-success" : r.ueber ? "text-text-2" : "text-faint",
                         )}
                       >
-                        {r.exists ? (
-                          <CheckCircle2 size={13} />
-                        ) : r.ueber ? (
-                          <Sparkles size={13} />
-                        ) : (
-                          <XCircle size={13} />
-                        )}
+                        {r.exists ? <CheckCircle2 size={13} /> : r.ueber ? <Sparkles size={13} /> : <XCircle size={13} />}
                         {r.quelle}
                       </span>
                     </td>
@@ -237,11 +344,6 @@ export function ClassifyPanel({ categories, canEdit }: { categories: string[]; c
               </tbody>
             </table>
           </div>
-          {!selectable && (
-            <p className="px-4 py-3 text-[12.5px] text-faint">
-              Keine automatische Zuordnung möglich – Oberkategorie manuell wählen, um zu speichern.
-            </p>
-          )}
         </div>
       )}
     </div>

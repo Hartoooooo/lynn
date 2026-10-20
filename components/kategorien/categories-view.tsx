@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Download, FileSpreadsheet, FolderTree, Loader2, Search, Upload } from "lucide-react";
+import { Download, FileSpreadsheet, FolderTree, Loader2, Search, Sparkles, Upload } from "lucide-react";
 import { importKategorien } from "@/app/actions";
 import { useToast } from "@/components/toast";
 import { Button, EmptyState } from "@/components/ui";
@@ -61,17 +61,23 @@ export function CategoriesView({
   selected,
   rows,
   canEdit,
+  dataset,
+  datasetLabel,
 }: {
   overview: CategoryOverview[];
   selected: CategoryOverview | null;
   rows: Security[];
   canEdit: boolean;
+  dataset: string;
+  datasetLabel: string;
 }) {
   const toast = useToast();
   const searchParams = useSearchParams();
   const highlightId = searchParams.get("s");
   const [query, setQuery] = useState("");
   const [importing, startImport] = useTransition();
+  const dsQuery = dataset === "EIX_B" ? "" : `&ds=${dataset}`;
+  const isEixB = dataset === "EIX_B";
 
   // Aus der zentralen Suche angesprungenes Wertpapier: zur Zeile scrollen und kurz markieren.
   useEffect(() => {
@@ -94,7 +100,7 @@ export function CategoriesView({
 
   function runImport() {
     startImport(async () => {
-      const res = await importKategorien();
+      const res = await importKategorien(dataset);
       if (res.ok) {
         toast(
           `Importliste geladen: ${res.inserted} Einträge${res.skipped ? `, ${res.skipped} bereits vorhanden` : ""}.`,
@@ -151,32 +157,46 @@ export function CategoriesView({
     csvDownload(`${selected.slug}.csv`, header, body);
   }
 
-  const importButton = canEdit ? (
-    <Button variant={totalAll === 0 ? "primary" : "secondary"} size="sm" onClick={runImport} disabled={importing}>
-      {importing ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
-      {totalAll === 0 ? "Importliste laden" : "Liste aktualisieren"}
-    </Button>
-  ) : null;
+  // Nur EIX B hat eine gebündelte Importliste; andere Listen werden über „Kategorisieren" befüllt.
+  const importButton =
+    canEdit && isEixB ? (
+      <Button variant={totalAll === 0 ? "primary" : "secondary"} size="sm" onClick={runImport} disabled={importing}>
+        {importing ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
+        {totalAll === 0 ? "Importliste laden" : "Liste aktualisieren"}
+      </Button>
+    ) : null;
 
   return (
     <div>
       {totalAll === 0 ? (
         <div className="mb-8">
-          <EmptyState icon={<FolderTree size={28} />} title="Noch keine Wertpapiere importiert">
-            {canEdit ? (
+          <EmptyState icon={<FolderTree size={28} />} title={`${datasetLabel}: noch keine Wertpapiere`}>
+            {!canEdit ? (
+              "Ein Redakteur muss diese Liste noch befüllen."
+            ) : isEixB ? (
               <div className="mt-3 flex flex-col items-center gap-2">
-                <span>Lade die beigefügte Kategorienliste (4006 Einträge) in die Datenbank.</span>
+                <span>Lade die beigefügte Kategorienliste (4006 Einträge) in diese Liste.</span>
                 {importButton}
               </div>
             ) : (
-              "Ein Redakteur muss die Kategorienliste noch importieren."
+              <div className="mt-3 flex flex-col items-center gap-2">
+                <span>
+                  Befülle „{datasetLabel}“ über den Tab „Kategorisieren“ – gleiche Ober-/Unterkategorien wie EIX B.
+                </span>
+                <Link
+                  href={`/kategorien?tab=kategorisieren${dsQuery}`}
+                  className="inline-flex h-8 items-center justify-center gap-2 rounded-[10px] bg-accent px-3 text-[13px] font-medium text-[#1f1e1d] transition-colors hover:bg-accent-hover"
+                >
+                  <Sparkles size={15} /> Zum Kategorisieren
+                </Link>
+              </div>
             )}
           </EmptyState>
         </div>
       ) : (
         <div className="mb-3 flex items-center justify-between gap-3">
           <span className="text-[13px] text-muted">
-            {overview.length} Oberkategorien · {totalAll.toLocaleString("de-DE")} Einträge
+            {datasetLabel} · {overview.length} Oberkategorien · {totalAll.toLocaleString("de-DE")} Einträge
           </span>
           {importButton}
         </div>
@@ -191,7 +211,7 @@ export function CategoriesView({
           return (
             <Link
               key={c.id}
-              href={`/kategorien?k=${c.slug}`}
+              href={`/kategorien?k=${c.slug}${dsQuery}`}
               scroll={false}
               className={cn(
                 "group rounded-xl border p-3.5 transition-colors",
@@ -235,16 +255,16 @@ export function CategoriesView({
               <Download size={15} /> CSV
             </Button>
             <a
-              href={`/api/kategorien/export?scope=${selected.slug}&format=xlsx`}
+              href={`/api/kategorien/export?scope=${selected.slug}&format=xlsx&dataset=${dataset}`}
               className="inline-flex h-8 items-center justify-center gap-2 rounded-[10px] border border-border bg-surface-2 px-2.5 text-[13px] font-medium text-text-2 transition-colors hover:bg-surface-3 hover:text-text"
               title="Diese Kategorie als Excel"
             >
               <FileSpreadsheet size={15} /> Excel
             </a>
             <a
-              href={`/api/kategorien/export?scope=all&format=xlsx`}
+              href={`/api/kategorien/export?scope=all&format=xlsx&dataset=${dataset}`}
               className="inline-flex h-8 items-center justify-center gap-2 rounded-[10px] border border-border bg-surface-2 px-2.5 text-[13px] font-medium text-text-2 transition-colors hover:bg-surface-3 hover:text-text"
-              title="Alle Kategorien als Excel-Arbeitsmappe"
+              title={`Alle Kategorien (${datasetLabel}) als Excel-Arbeitsmappe`}
             >
               <FileSpreadsheet size={15} /> Alle
             </a>
