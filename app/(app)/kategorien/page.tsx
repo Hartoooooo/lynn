@@ -1,15 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { FolderTree, Sparkles } from "lucide-react";
+import { FolderTree, Inbox, Sparkles } from "lucide-react";
 import { CategoriesView, type CategoryOverview, type Security } from "@/components/kategorien/categories-view";
 import { ClassifyPanel } from "@/components/kategorien/classify-panel";
+import { UncategorizedView, type UncategorizedRow } from "@/components/kategorien/uncategorized-view";
 import { DATASETS, DEFAULT_DATASET, datasetLabel, isDatasetKey } from "@/lib/datasets";
 import { canEdit, getSession } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Kategorien" };
 
-type Tab = "uebersicht" | "kategorisieren";
+type Tab = "uebersicht" | "kategorisieren" | "nicht-kategorisiert";
 
 export default async function KategorienPage({
   searchParams,
@@ -17,14 +18,20 @@ export default async function KategorienPage({
   searchParams: Promise<{ tab?: string; k?: string; ds?: string }>;
 }) {
   const params = await searchParams;
-  const tab: Tab = params.tab === "kategorisieren" ? "kategorisieren" : "uebersicht";
+  const tab: Tab =
+    params.tab === "kategorisieren"
+      ? "kategorisieren"
+      : params.tab === "nicht-kategorisiert"
+        ? "nicht-kategorisiert"
+        : "uebersicht";
   const ds = isDatasetKey(params.ds) ? params.ds : DEFAULT_DATASET;
   const { supabase, profile } = await getSession();
   const editable = canEdit(profile.role);
 
-  const [{ data: overviewData }, { data: countData }] = await Promise.all([
+  const [{ data: overviewData }, { data: countData }, { count: uncatCount }] = await Promise.all([
     supabase.rpc("security_overview", { p_dataset: ds }),
     supabase.rpc("security_dataset_counts"),
+    supabase.from("uncategorized_securities").select("id", { count: "exact", head: true }).eq("dataset", ds),
   ]);
   const overview = ((overviewData ?? []) as CategoryOverview[]).map((c) => ({
     ...c,
@@ -63,7 +70,7 @@ export default async function KategorienPage({
   );
 
   const tabHref = (t: Tab) => {
-    const base = t === "kategorisieren" ? "tab=kategorisieren" : "";
+    const base = t === "uebersicht" ? "" : `tab=${t}`;
     const dsq = ds !== DEFAULT_DATASET ? `ds=${ds}` : "";
     const q = [dsq, base].filter(Boolean).join("&");
     return q ? `/kategorien?${q}` : "/kategorien";
@@ -75,10 +82,11 @@ export default async function KategorienPage({
     >
       {(
         [
-          ["uebersicht", "Übersicht", <FolderTree key="i" size={15} />],
-          ["kategorisieren", "Kategorisieren", <Sparkles key="i" size={15} />],
+          ["uebersicht", "Übersicht", <FolderTree key="i" size={15} />, null],
+          ["kategorisieren", "Kategorisieren", <Sparkles key="i" size={15} />, null],
+          ["nicht-kategorisiert", "Nicht kategorisiert", <Inbox key="i" size={15} />, uncatCount ?? 0],
         ] as const
-      ).map(([key, label, icon]) => (
+      ).map(([key, label, icon, badge]) => (
         <Link
           key={key}
           href={tabHref(key)}
@@ -90,6 +98,7 @@ export default async function KategorienPage({
         >
           {icon}
           {label}
+          {badge ? <span className="rounded-md bg-surface-3 px-1.5 py-0.5 text-[11px] text-muted">{badge}</span> : null}
         </Link>
       ))}
     </nav>
@@ -102,6 +111,28 @@ export default async function KategorienPage({
         {chooser}
         {tabs}
         <ClassifyPanel categories={overview.map((c) => c.name)} canEdit={editable} dataset={ds} datasetLabel={datasetLabel(ds)} />
+      </div>
+    );
+  }
+
+  if (tab === "nicht-kategorisiert") {
+    const { data } = await supabase
+      .from("uncategorized_securities")
+      .select("id, input, isin, name, kuerzel, hebel, underlying_name, quelle")
+      .eq("dataset", ds)
+      .order("created_at", { ascending: false })
+      .limit(1000);
+    return (
+      <div className="mx-auto max-w-[1400px] px-8 pt-12 max-[900px]:px-5 max-sm:px-4 max-sm:pt-6">
+        <Header />
+        {chooser}
+        {tabs}
+        <UncategorizedView
+          rows={(data ?? []) as UncategorizedRow[]}
+          categories={overview.map((c) => c.name)}
+          canEdit={editable}
+          datasetLabel={datasetLabel(ds)}
+        />
       </div>
     );
   }

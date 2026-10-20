@@ -589,6 +589,114 @@ export async function saveClassifications(items: ClassificationInput[], dataset:
   return { ok: true as const, inserted: res.inserted, skipped: preSkipped + res.skipped };
 }
 
+export type UncategorizedInput = {
+  input: string;
+  isin: string;
+  wkn: string;
+  name: string;
+  kuerzel: string;
+  hebel: number | null;
+  underlyingName: string;
+  underlyingIsin: string;
+  quelle: string;
+};
+
+/** Parkt nicht klassifizierbare Werte je Liste zum späteren manuellen Einsortieren. */
+export async function saveUncategorized(items: UncategorizedInput[], dataset: string = DEFAULT_DATASET) {
+  const { supabase } = await requireEditor();
+  const ds = isDatasetKey(dataset) ? dataset : DEFAULT_DATASET;
+  if (!items.length) return { ok: true as const, inserted: 0, skipped: 0 };
+
+  const isins = items.map((i) => i.isin.trim().toUpperCase()).filter(Boolean);
+  const existing = new Set<string>();
+  if (isins.length) {
+    const { data } = await supabase.from("uncategorized_securities").select("isin").eq("dataset", ds).in("isin", isins);
+    for (const e of data ?? []) existing.add(e.isin);
+  }
+
+  const seen = new Set<string>();
+  const rows: Database["public"]["Tables"]["uncategorized_securities"]["Insert"][] = [];
+  for (const it of items) {
+    const isin = it.isin.trim().toUpperCase();
+    if (isin) {
+      if (existing.has(isin) || seen.has(isin)) continue;
+      seen.add(isin);
+    }
+    rows.push({
+      dataset: ds,
+      input: it.input.trim(),
+      isin,
+      wkn: it.wkn.trim(),
+      name: it.name.trim(),
+      kuerzel: it.kuerzel.trim(),
+      hebel: it.hebel,
+      underlying_name: it.underlyingName.trim(),
+      underlying_isin: it.underlyingIsin.trim().toUpperCase(),
+      quelle: it.quelle,
+    });
+  }
+
+  let inserted = 0;
+  let skipped = items.length - rows.length;
+  for (let i = 0; i < rows.length; i += 500) {
+    const batch = rows.slice(i, i + 500);
+    const { error } = await supabase.from("uncategorized_securities").insert(batch);
+    if (!error) {
+      inserted += batch.length;
+      continue;
+    }
+    if (error.code !== "23505") return { ok: false as const, inserted, skipped, message: error.message };
+    for (const row of batch) {
+      const { error: e2 } = await supabase.from("uncategorized_securities").insert(row);
+      if (!e2) inserted++;
+      else if (e2.code === "23505") skipped++;
+      else return { ok: false as const, inserted, skipped, message: e2.message };
+    }
+  }
+
+  revalidatePath("/kategorien");
+  return { ok: true as const, inserted, skipped };
+}
+
+/** Sortiert einen geparkten Eintrag manuell in eine Kategorie der gleichen Liste ein. */
+export async function assignUncategorized(id: string, categoryName: string, subcategory: string) {
+  const { supabase } = await requireEditor();
+  const { data: row } = await supabase.from("uncategorized_securities").select("*").eq("id", id).maybeSingle();
+  if (!row) return { ok: false as const, message: "Eintrag nicht gefunden." };
+  const { data: cat } = await supabase.from("security_categories").select("id").eq("name", categoryName).maybeSingle();
+  if (!cat) return { ok: false as const, message: "Bitte eine Oberkategorie wählen." };
+
+  const res = await insertSecurities(supabase, [
+    {
+      category_id: cat.id,
+      subcategory: subcategory.trim(),
+      wkn: row.wkn,
+      name: row.name,
+      isin: row.isin,
+      kuerzel: row.kuerzel,
+      hebel: row.hebel,
+      underlying_name: row.underlying_name,
+      underlying_isin: row.underlying_isin,
+      source: "manuell",
+      dataset: row.dataset,
+    },
+  ]);
+  if (res.error) return { ok: false as const, message: res.error };
+
+  await supabase.from("uncategorized_securities").delete().eq("id", id);
+  revalidatePath("/kategorien");
+  return { ok: true as const };
+}
+
+/** Verwirft einen geparkten Eintrag. */
+export async function deleteUncategorized(id: string) {
+  const { supabase } = await requireEditor();
+  const { error } = await supabase.from("uncategorized_securities").delete().eq("id", id);
+  if (error) return { ok: false as const, message: error.message };
+  revalidatePath("/kategorien");
+  return { ok: true as const };
+}
+
 export async function setHaShift(input: { weekId: string; person: string; day: number; value: string | null }) {
   const supabase = await createClient();
   const { error } = await supabase.rpc("roster_set_ha", {

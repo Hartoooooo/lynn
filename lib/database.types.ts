@@ -289,6 +289,51 @@ export type Database = {
         };
         Relationships: Rel[];
       };
+      uncategorized_securities: {
+        Row: {
+          id: string;
+          dataset: string;
+          input: string;
+          isin: string;
+          wkn: string;
+          name: string;
+          kuerzel: string;
+          hebel: number | null;
+          underlying_name: string;
+          underlying_isin: string;
+          quelle: string;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          dataset?: string;
+          input?: string;
+          isin?: string;
+          wkn?: string;
+          name?: string;
+          kuerzel?: string;
+          hebel?: number | null;
+          underlying_name?: string;
+          underlying_isin?: string;
+          quelle?: string;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          dataset?: string;
+          input?: string;
+          isin?: string;
+          wkn?: string;
+          name?: string;
+          kuerzel?: string;
+          hebel?: number | null;
+          underlying_name?: string;
+          underlying_isin?: string;
+          quelle?: string;
+        };
+        Relationships: Rel[];
+      };
       security_categories: {
         Row: { id: string; name: string; slug: string; sort_order: number; created_at: string };
         Insert: { id?: string; name: string; slug: string; sort_order?: number; created_at?: string };

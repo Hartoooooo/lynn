@@ -2,7 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { CheckCircle2, Database, Loader2, Play, Sparkles, Square, XCircle } from "lucide-react";
-import { saveClassifications, type ClassificationInput } from "@/app/actions";
+import { saveClassifications, saveUncategorized, type ClassificationInput, type UncategorizedInput } from "@/app/actions";
 import { useToast } from "@/components/toast";
 import { Button } from "@/components/ui";
 import { cn } from "@/lib/utils";
@@ -131,18 +131,45 @@ export function ClassifyPanel({
         underlyingName: r.underlying,
         underlyingIsin: "",
       }));
-    if (!items.length) {
-      toast("Keine Einträge zum Speichern ausgewählt.", "error");
+    // Nicht zuordenbare Werte (keine Kategorie, nicht bereits erfasst) werden zum späteren Einsortieren geparkt.
+    const parked: UncategorizedInput[] = rowsRef.current
+      .filter((r) => !r.category && !r.exists)
+      .map((r) => ({
+        input: r.input,
+        isin: r.isin,
+        wkn: "",
+        name: r.name,
+        kuerzel: "",
+        hebel: r.hebel,
+        underlyingName: r.underlying,
+        underlyingIsin: "",
+        quelle: r.quelle,
+      }));
+    if (!items.length && !parked.length) {
+      toast("Keine Einträge zum Speichern.", "error");
       return;
     }
     startSave(async () => {
-      const res = await saveClassifications(items, dataset);
-      if (!res.ok) {
-        toast(res.message ?? "Speichern fehlgeschlagen.", "error");
-        return;
+      const msg: string[] = [];
+      if (items.length) {
+        const res = await saveClassifications(items, dataset);
+        if (!res.ok) {
+          toast(res.message ?? "Speichern fehlgeschlagen.", "error");
+          return;
+        }
+        setSavedTotal((n) => n + res.inserted);
+        msg.push(`${res.inserted} gespeichert`);
+        if (res.skipped) msg.push(`${res.skipped} übersprungen`);
       }
-      setSavedTotal((n) => n + res.inserted);
-      toast(`${res.inserted} in ${datasetLabel} gespeichert${res.skipped ? `, ${res.skipped} übersprungen` : ""}.`);
+      if (parked.length) {
+        const res2 = await saveUncategorized(parked, dataset);
+        if (!res2.ok) {
+          toast(res2.message ?? "Parken fehlgeschlagen.", "error");
+          return;
+        }
+        if (res2.inserted) msg.push(`${res2.inserted} geparkt`);
+      }
+      toast(`${msg.join(", ")} (${datasetLabel}).`);
       rowsRef.current = [];
       setRows([]);
       if (cursorRef.current < queueRef.current.length) {
@@ -166,6 +193,7 @@ export function ClassifyPanel({
   }
 
   const selectedCount = rows.filter((r) => r.include && r.category).length;
+  const parkCount = rows.filter((r) => !r.category && !r.exists).length;
   const pct = total ? Math.round((processed / total) * 100) : 0;
   const busy = phase === "running";
   const inFlight = phase === "running" || phase === "paused" || saving;
@@ -237,15 +265,23 @@ export function ClassifyPanel({
       {rows.length > 0 && (
         <div className="rounded-2xl border border-border">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
-            <h2 className="text-[15px] font-semibold">
-              {phase === "paused" ? `Pausiert – ${rows.length} Ergebnisse prüfen` : `Ergebnisse (${rows.length})`}
-            </h2>
+            <div className="mr-auto">
+              <h2 className="text-[15px] font-semibold">
+                {phase === "paused" ? `Pausiert – ${rows.length} Ergebnisse prüfen` : `Ergebnisse (${rows.length})`}
+              </h2>
+              <p className="text-[12px] text-faint">
+                {selectedCount} zuordenbar{parkCount > 0 && ` · ${parkCount} werden geparkt`}
+              </p>
+            </div>
             {canEdit ? (
-              <Button variant="primary" size="sm" onClick={saveAndContinue} disabled={saving || busy || selectedCount === 0}>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={saveAndContinue}
+                disabled={saving || busy || (selectedCount === 0 && parkCount === 0)}
+              >
                 {saving ? <Loader2 size={15} className="animate-spin" /> : <Database size={15} />}
-                {cursorRef.current < queueRef.current.length
-                  ? `${selectedCount} speichern & weiter`
-                  : `${selectedCount} speichern`}
+                {cursorRef.current < queueRef.current.length ? "Speichern & weiter" : "Speichern"}
               </Button>
             ) : (
               <span className="text-[12.5px] text-faint">Nur Redakteure können speichern.</span>
