@@ -1,11 +1,33 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ArrowRight, Calculator, Search, TrendingDown, TrendingUp } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowRight, Calculator, RefreshCw, Search, TrendingDown, TrendingUp } from "lucide-react";
 import type { HedgeRow } from "@/lib/hedge-data";
 import { cn } from "@/lib/utils";
 
 type Direction = "long" | "short";
+
+type Live = {
+  loading: boolean;
+  error: string | null;
+  symbol: string | null;
+  price: number | null;
+  priceCurrency: string | null;
+  fx: number | null;
+  time: number | null;
+  fxTime: number | null;
+};
+
+const EMPTY_LIVE: Live = {
+  loading: false,
+  error: null,
+  symbol: null,
+  price: null,
+  priceCurrency: null,
+  fx: null,
+  time: null,
+  fxTime: null,
+};
 
 const QUALITY_STYLE: Record<string, string> = {
   gut: "bg-emerald-500/15 text-emerald-300 ring-emerald-500/25",
@@ -25,6 +47,16 @@ function fmt(n: number, max = 2) {
   return n.toLocaleString("de-DE", { minimumFractionDigits: 0, maximumFractionDigits: max });
 }
 
+function timeLabel(sec: number | null): string | null {
+  if (!sec) return null;
+  return new Date(sec * 1000).toLocaleString("de-DE", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export function HedgeCalculator({ rows }: { rows: HedgeRow[] }) {
   const [isin, setIsin] = useState("");
   const [direction, setDirection] = useState<Direction>("long");
@@ -33,6 +65,8 @@ export function HedgeCalculator({ rows }: { rows: HedgeRow[] }) {
   const [price, setPrice] = useState("");
   const [touchedFx, setTouchedFx] = useState(false);
   const [touchedPrice, setTouchedPrice] = useState(false);
+  const [live, setLive] = useState<Live>(EMPTY_LIVE);
+  const reqId = useRef(0);
 
   const byIsin = useMemo(() => {
     const m = new Map<string, HedgeRow>();
@@ -56,9 +90,74 @@ export function HedgeCalculator({ rows }: { rows: HedgeRow[] }) {
 
   const match = byIsin.get(isin.trim().toUpperCase()) ?? null;
 
-  // Effektive Eingabewerte: manuell übersteuert oder Vorbelegung aus dem Datensatz
-  const fxValue = touchedFx ? num(fx) : num(fx) ?? match?.wechselkurs ?? null;
-  const priceValue = touchedPrice ? num(price) : num(price) ?? match?.kurs ?? null;
+  const loadLive = useCallback(async (row: HedgeRow) => {
+    if (!row.hedgeTicker) {
+      setLive({ ...EMPTY_LIVE, error: "Kein Hedge-Ticker hinterlegt" });
+      return;
+    }
+    const id = ++reqId.current;
+    setLive({ ...EMPTY_LIVE, loading: true });
+    try {
+      const params = new URLSearchParams({ symbol: row.hedgeTicker });
+      if (row.waehrung) params.set("currency", row.waehrung);
+      const res = await fetch(`/api/quote?${params.toString()}`, { cache: "no-store" });
+      if (id !== reqId.current) return; // Antwort eines älteren Produkts verwerfen
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        setLive({ ...EMPTY_LIVE, error: body.error ?? "Kursabruf fehlgeschlagen" });
+        return;
+      }
+      const data = (await res.json()) as {
+        symbol: string;
+        price: number;
+        priceCurrency: string | null;
+        time: number | null;
+        fx: number | null;
+        fxTime: number | null;
+      };
+      if (id !== reqId.current) return;
+      setLive({
+        loading: false,
+        error: null,
+        symbol: data.symbol,
+        price: data.price,
+        priceCurrency: data.priceCurrency,
+        fx: data.fx,
+        time: data.time,
+        fxTime: data.fxTime,
+      });
+    } catch {
+      if (id !== reqId.current) return;
+      setLive({ ...EMPTY_LIVE, error: "Kursabruf fehlgeschlagen" });
+    }
+  }, []);
+
+  // Beim Produktwechsel: manuelle Eingaben zurücksetzen und Live-Kurs laden.
+  const matchKey = match?.isin ?? "";
+  useEffect(() => {
+    if (!match) {
+      setLive(EMPTY_LIVE);
+      return;
+    }
+    setTouchedFx(false);
+    setTouchedPrice(false);
+    setFx("");
+    setPrice("");
+    loadLive(match);
+  }, [matchKey, match, loadLive]);
+
+  // Effektive Werte: manuell übersteuert > Live-Kurs > Beispielwert aus der Liste.
+  const fxValue = touchedFx ? num(fx) : live.fx ?? match?.wechselkurs ?? null;
+  const priceValue = touchedPrice ? num(price) : live.price ?? match?.kurs ?? null;
+
+  const fxDisplay = touchedFx ? fx : live.fx != null ? String(live.fx) : match?.wechselkurs != null ? String(match.wechselkurs) : "";
+  const priceDisplay = touchedPrice
+    ? price
+    : live.price != null
+      ? String(live.price)
+      : match?.kurs != null
+        ? String(match.kurs)
+        : "";
 
   const result = useMemo(() => {
     if (!match) return null;
@@ -67,11 +166,10 @@ export function HedgeCalculator({ rows }: { rows: HedgeRow[] }) {
     if (pos === null || pos <= 0 || faktor === null) return null;
 
     const signedPos = direction === "long" ? pos : -pos;
-    // Positiv korreliert + Long → Hedge verkaufen (short); Short → kaufen. Negativer Faktor dreht die Richtung.
     const action: "SELL" | "BUY" = signedPos * faktor > 0 ? "SELL" : "BUY";
 
-    const hedgeAmountEur = pos * faktor; // Betrag in EUR
-    const hedgeAmountCcy = fxValue !== null ? hedgeAmountEur * fxValue : null; // in Hedge-Währung
+    const hedgeAmountEur = pos * faktor;
+    const hedgeAmountCcy = fxValue !== null ? hedgeAmountEur * fxValue : null;
     const shares =
       hedgeAmountCcy !== null && priceValue !== null && priceValue > 0
         ? Math.round(hedgeAmountCcy / priceValue)
@@ -79,6 +177,9 @@ export function HedgeCalculator({ rows }: { rows: HedgeRow[] }) {
 
     return { action, faktor, hedgeAmountEur, hedgeAmountCcy, shares };
   }, [match, position, direction, fxValue, priceValue]);
+
+  const priceSource = touchedPrice ? "manuell" : live.price != null ? "live" : match?.kurs != null ? "beispiel" : "fehlt";
+  const fxSource = touchedFx ? "manuell" : live.fx != null ? "live" : match?.wechselkurs != null ? "beispiel" : "fehlt";
 
   return (
     <div className="mb-8 rounded-xl border border-border bg-surface/60 p-5 max-[900px]:p-4">
@@ -108,13 +209,7 @@ export function HedgeCalculator({ rows }: { rows: HedgeRow[] }) {
               {suggestions.map((s) => (
                 <li key={s.isin}>
                   <button
-                    onClick={() => {
-                      setIsin(s.isin);
-                      setTouchedFx(false);
-                      setTouchedPrice(false);
-                      setFx("");
-                      setPrice("");
-                    }}
+                    onClick={() => setIsin(s.isin)}
                     className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] hover:bg-surface-3"
                   >
                     <span className="font-mono text-[12.5px] text-text">{s.isin}</span>
@@ -167,11 +262,12 @@ export function HedgeCalculator({ rows }: { rows: HedgeRow[] }) {
 
         {/* Wechselkurs */}
         <div>
-          <label className="mb-1 block text-[12.5px] font-medium text-text-2">
+          <label className="mb-1 flex items-center gap-1.5 text-[12.5px] font-medium text-text-2">
             Wechselkurs 1 EUR ={match?.waehrung ? ` ${match.waehrung}` : " Hedge-Währung"}
+            <SourceTag source={fxSource} />
           </label>
           <input
-            value={touchedFx ? fx : fx || (match?.wechselkurs != null ? String(match.wechselkurs) : "")}
+            value={fxDisplay}
             onChange={(e) => {
               setTouchedFx(true);
               setFx(e.target.value);
@@ -185,11 +281,12 @@ export function HedgeCalculator({ rows }: { rows: HedgeRow[] }) {
 
         {/* Kurs Hedge-Produkt */}
         <div>
-          <label className="mb-1 block text-[12.5px] font-medium text-text-2">
+          <label className="mb-1 flex items-center gap-1.5 text-[12.5px] font-medium text-text-2">
             Kurs Hedge-Produkt{match?.hedgeTicker ? ` (${match.hedgeTicker})` : ""}
+            <SourceTag source={priceSource} />
           </label>
           <input
-            value={touchedPrice ? price : price || (match?.kurs != null ? String(match.kurs) : "")}
+            value={priceDisplay}
             onChange={(e) => {
               setTouchedPrice(true);
               setPrice(e.target.value);
@@ -201,6 +298,35 @@ export function HedgeCalculator({ rows }: { rows: HedgeRow[] }) {
           />
         </div>
       </div>
+
+      {/* Live-Status */}
+      {match && (
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-faint">
+          {live.loading ? (
+            <span className="inline-flex items-center gap-1.5">
+              <RefreshCw size={12} className="animate-spin" /> Live-Kurs wird geladen …
+            </span>
+          ) : live.error ? (
+            <span className="text-amber-400">
+              Live-Kurs nicht verfügbar ({live.error}) – Beispielwerte aus der Liste werden genutzt, bitte prüfen.
+            </span>
+          ) : live.price != null ? (
+            <span>
+              Live: {live.symbol} {fmt(live.price, 4)} {live.priceCurrency ?? ""}
+              {live.fx != null && match.waehrung && match.waehrung !== "EUR" ? ` · EUR/${match.waehrung} ${fmt(live.fx, 4)}` : ""}
+              {timeLabel(live.time) ? ` · Stand ${timeLabel(live.time)}` : ""}
+            </span>
+          ) : null}
+          {!live.loading && (
+            <button
+              onClick={() => match && loadLive(match)}
+              className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-text-2 transition hover:bg-surface-2 hover:text-text"
+            >
+              <RefreshCw size={12} /> Aktualisieren
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Treffer / Ergebnis */}
       {isin.trim() !== "" && !match && suggestions.length === 0 && (
@@ -262,32 +388,41 @@ export function HedgeCalculator({ rows }: { rows: HedgeRow[] }) {
                 )}
               </div>
 
-              <dl className="grid grid-cols-3 gap-3 max-[640px]:grid-cols-1">
+              <dl className="grid grid-cols-4 gap-3 max-[760px]:grid-cols-2 max-[480px]:grid-cols-1">
                 <div className="rounded-lg bg-surface px-3 py-2.5">
-                  <dt className="text-[11.5px] uppercase tracking-[0.04em] text-faint">Hedge-Betrag (EUR)</dt>
-                  <dd className="mt-0.5 font-mono text-[15px] text-text tabular-nums">{fmt(result.hedgeAmountEur)} €</dd>
+                  <dt className="text-[11.5px] uppercase tracking-[0.04em] text-faint">Stückzahl</dt>
+                  <dd className="mt-0.5 font-mono text-[15px] text-text tabular-nums">
+                    {result.shares !== null ? `${fmt(result.shares)} Stk.` : "– (Kurs fehlt)"}
+                  </dd>
+                </div>
+                <div className="rounded-lg bg-surface px-3 py-2.5">
+                  <dt className="text-[11.5px] uppercase tracking-[0.04em] text-faint">
+                    Kurs/Stück {priceValue !== null ? (priceSource === "live" ? "(live)" : "") : ""}
+                  </dt>
+                  <dd className="mt-0.5 font-mono text-[15px] text-text tabular-nums">
+                    {priceValue !== null ? `${fmt(priceValue, 4)} ${match.waehrung ?? ""}` : "–"}
+                  </dd>
                 </div>
                 <div className="rounded-lg bg-surface px-3 py-2.5">
                   <dt className="text-[11.5px] uppercase tracking-[0.04em] text-faint">
                     Hedge-Betrag {match.waehrung ? `(${match.waehrung})` : ""}
                   </dt>
                   <dd className="mt-0.5 font-mono text-[15px] text-text tabular-nums">
-                    {result.hedgeAmountCcy !== null ? `${fmt(result.hedgeAmountCcy)} ${match.waehrung ?? ""}` : "– (Wechselkurs fehlt)"}
+                    {result.hedgeAmountCcy !== null
+                      ? `${fmt(result.hedgeAmountCcy)} ${match.waehrung ?? ""}`
+                      : "– (Wechselkurs fehlt)"}
                   </dd>
                 </div>
                 <div className="rounded-lg bg-surface px-3 py-2.5">
-                  <dt className="text-[11.5px] uppercase tracking-[0.04em] text-faint">Stückzahl Hedge-Produkt</dt>
-                  <dd className="mt-0.5 font-mono text-[15px] text-text tabular-nums">
-                    {result.shares !== null ? `${fmt(result.shares)} Stk.` : "– (Kurs fehlt)"}
-                  </dd>
+                  <dt className="text-[11.5px] uppercase tracking-[0.04em] text-faint">Hedge-Betrag (EUR)</dt>
+                  <dd className="mt-0.5 font-mono text-[15px] text-text tabular-nums">{fmt(result.hedgeAmountEur)} €</dd>
                 </div>
               </dl>
 
               <p className="mt-3 text-[12px] leading-relaxed text-faint">
                 Rechnung: Hedge-Betrag = Positionsgröße × Hedge-Faktor × Wechselkurs; Stückzahl = Hedge-Betrag ÷ Kurs des
                 Hedge-Produkts. Richtung: Long + positiver Faktor → verkaufen, Short oder negativer Faktor → kaufen.
-                Wechselkurs und Kurs sind mit Beispielwerten aus der Liste vorbelegt und sollten vor einer Order mit
-                aktuellen Marktdaten überschrieben werden.
+                Kurs und Wechselkurs werden live von Yahoo Finance gezogen; jedes Feld lässt sich manuell überschreiben.
               </p>
             </div>
           ) : (
@@ -299,4 +434,26 @@ export function HedgeCalculator({ rows }: { rows: HedgeRow[] }) {
       )}
     </div>
   );
+}
+
+function SourceTag({ source }: { source: string }) {
+  if (source === "live")
+    return (
+      <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-300">
+        live
+      </span>
+    );
+  if (source === "manuell")
+    return (
+      <span className="rounded bg-surface-3 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-text-2">
+        manuell
+      </span>
+    );
+  if (source === "beispiel")
+    return (
+      <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-300">
+        Beispiel
+      </span>
+    );
+  return null;
 }
