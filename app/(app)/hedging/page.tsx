@@ -11,7 +11,8 @@ export default function HedgingPage() {
       <h1 className="font-serif text-[30px] font-medium tracking-tight">Hedging</h1>
       <p className="mb-8 mt-1 max-w-[720px] text-muted">
         Alle unsere Produkte mit ISIN und Kürzel, dem passenden Hedge-Produkt (Ticker und ISIN), dem Hedge-Faktor, dem
-        Gleichlauf (Korrelation R), der Währung des Hedge-Produkts sowie der Qualität des Hedges.
+        Gleichlauf (Korrelation R), der Währung des Hedge-Produkts sowie der Qualität des Hedges. Zusätzlich die Hebel-,
+        Short- und Krypto-ETPs mit ihrem Underlying – bei Einzelaktien steht die ISIN der Aktie daneben.
       </p>
       <HedgeCalculator rows={HEDGE_ROWS} />
       <HedgeTable rows={HEDGE_ROWS} />

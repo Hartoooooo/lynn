@@ -112,9 +112,11 @@ export function HedgeCalculator({ rows }: { rows: HedgeRow[] }) {
     }
   }, []);
 
+  const isHebel = match?.source === "hebel";
+
   const matchKey = match?.isin ?? "";
   useEffect(() => {
-    if (!match) {
+    if (!match || match.source === "hebel") {
       setLive(EMPTY_LIVE);
       return;
     }
@@ -218,6 +220,8 @@ export function HedgeCalculator({ rows }: { rows: HedgeRow[] }) {
           )}
         </div>
 
+        {!isHebel && (
+          <>
         {/* Position in Stück */}
         <div>
           <label className="mb-1 block text-[12.5px] font-medium text-text-2">Positionsgröße in Stück</label>
@@ -293,10 +297,49 @@ export function HedgeCalculator({ rows }: { rows: HedgeRow[] }) {
             className="h-10 w-full rounded-[10px] border border-border bg-surface px-3 text-[13.5px] text-text outline-none placeholder:text-faint focus:border-border-strong"
           />
         </div>
+          </>
+        )}
       </div>
 
+      {/* Hinweis für Hebel-/Krypto-Produkte (kein Hedge-Produkt hinterlegt) */}
+      {isHebel && match && (
+        <div className="mt-4 rounded-lg border border-border bg-surface-2/60 p-4">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13.5px]">
+            <span className="font-medium text-text">{match.kuerzel}</span>
+            <span className="text-faint">·</span>
+            <span className="text-text-2">{match.name}</span>
+            {match.hebel != null && (
+              <span className="ml-auto inline-flex items-center rounded-md bg-surface-3 px-2 py-0.5 font-mono text-[12px] text-text-2">
+                Hebel {Number(match.hebel) < 0 ? "−" : ""}
+                {Math.abs(Number(match.hebel))}×
+              </span>
+            )}
+          </div>
+          {match.underlying && (
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-[13px] text-muted">
+              <span>Underlying</span>
+              <ArrowRight size={14} className="text-faint" />
+              <span className="text-text-2">{match.underlying}</span>
+              {match.underlyingIsin && (
+                <span className="inline-flex items-center gap-1 font-mono text-[12.5px] text-accent">
+                  <span className="rounded bg-accent-soft px-1 py-px text-[9.5px] font-sans font-semibold uppercase tracking-wide">
+                    Aktie
+                  </span>
+                  {match.underlyingIsin}
+                </span>
+              )}
+            </div>
+          )}
+          <p className="mt-3 text-[12px] leading-relaxed text-faint">
+            Für Hebel-, Short- und Krypto-Produkte ist hier keine automatische Hedge-Berechnung hinterlegt – sie sind in
+            der Tabelle unten gelistet. Der Hedge erfolgt praktisch über das Underlying (bei Einzelaktien die oben
+            genannte ISIN) entsprechend dem Hebelfaktor.
+          </p>
+        </div>
+      )}
+
       {/* Live-Status */}
-      {match && (
+      {match && !isHebel && (
         <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-faint">
           {live.loading ? (
             <span className="inline-flex items-center gap-1.5">
@@ -359,7 +402,7 @@ export function HedgeCalculator({ rows }: { rows: HedgeRow[] }) {
         <p className="mt-4 text-[13px] text-muted">Keine Übereinstimmung für „{isin.trim()}“ gefunden.</p>
       )}
 
-      {match && (
+      {match && !isHebel && (
         <div className="mt-5 rounded-lg border border-border bg-surface-2/60 p-4">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13.5px]">
             <span className="font-medium text-text">{match.kuerzel}</span>
