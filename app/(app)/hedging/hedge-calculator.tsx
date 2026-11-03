@@ -418,6 +418,22 @@ export function HedgeCalculator({ rows }: { rows: HedgeRow[] }) {
             </span>
           </div>
 
+          {match.underlying && (
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-[13px] text-muted">
+              <span>Underlying / Referenz</span>
+              <ArrowRight size={14} className="text-faint" />
+              <span className="text-text-2">{match.underlying}</span>
+              {match.underlyingIsin && (
+                <span className="inline-flex items-center gap-1 font-mono text-[12.5px] text-accent">
+                  <span className="rounded bg-accent-soft px-1 py-px text-[9.5px] font-sans font-semibold uppercase tracking-wide">
+                    Aktie
+                  </span>
+                  {match.underlyingIsin}
+                </span>
+              )}
+            </div>
+          )}
+
           <div className="mt-3 flex flex-wrap items-center gap-2 text-[13px] text-muted">
             <span>Hedge-Produkt</span>
             <ArrowRight size={14} className="text-faint" />
