@@ -31,6 +31,7 @@ import {
   Pencil,
   Plus,
   Settings,
+  Shield,
   Star,
   Trash2,
   Users,
@@ -131,6 +132,7 @@ export function Sidebar({
         {navLink("/", "Start", <Home size={17} />)}
         {navLink("/personal", "Personal", <Users size={17} />)}
         {navLink("/favoriten", "Favoriten", <Star size={17} />)}
+        {navLink("/hedging", "Hedging", <Shield size={17} />)}
       </nav>
 
       <div className={cn("mt-6 flex items-center px-4 pb-1.5", collapsed && "justify-center px-0")}>
