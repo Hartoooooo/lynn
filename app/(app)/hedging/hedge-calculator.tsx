@@ -384,6 +384,14 @@ export function HedgeCalculator({ rows }: { rows: HedgeRow[] }) {
             <span>
               Faktor <span className="font-mono text-text-2">{fmt(num(match.faktor) ?? 0, 4)}</span>
             </span>
+            {match.gleichlauf !== null && (
+              <>
+                <span className="text-faint">·</span>
+                <span>
+                  Gleichlauf R <span className="font-mono text-text-2">{fmt(match.gleichlauf, 4)}</span>
+                </span>
+              </>
+            )}
             {match.waehrung && (
               <>
                 <span className="text-faint">·</span>

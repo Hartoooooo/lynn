@@ -29,6 +29,13 @@ function QualityBadge({ value }: { value: string | null }) {
   );
 }
 
+function correlationColor(r: number) {
+  const a = Math.abs(r);
+  if (a >= 0.9) return "text-emerald-300";
+  if (a >= 0.75) return "text-amber-300";
+  return "text-rose-300";
+}
+
 function formatFaktor(v: number | string | null) {
   if (v === null || v === undefined || v === "") return "–";
   if (typeof v === "number") return v.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
@@ -98,6 +105,7 @@ export function HedgeTable({ rows }: { rows: HedgeRow[] }) {
               <th className="px-3 py-2.5 font-semibold">Hedge-Ticker</th>
               <th className="px-3 py-2.5 font-semibold">Hedge-ISIN</th>
               <th className="px-3 py-2.5 text-right font-semibold">Hedge-Faktor</th>
+              <th className="px-3 py-2.5 text-right font-semibold">Gleichlauf R</th>
               <th className="px-3 py-2.5 font-semibold">Währung</th>
               <th className="px-3 py-2.5 font-semibold">Hedge-Qualität</th>
             </tr>
@@ -119,6 +127,13 @@ export function HedgeTable({ rows }: { rows: HedgeRow[] }) {
                 <td className="px-3 py-2.5 font-mono text-[12.5px] text-text-2">{r.hedgeIsin ?? "–"}</td>
                 <td className="px-3 py-2.5 text-right font-mono text-[12.5px] text-text-2 tabular-nums">
                   {formatFaktor(r.faktor)}
+                </td>
+                <td className="px-3 py-2.5 text-right font-mono text-[12.5px] tabular-nums">
+                  {r.gleichlauf !== null ? (
+                    <span className={correlationColor(r.gleichlauf)}>{formatFaktor(r.gleichlauf)}</span>
+                  ) : (
+                    <span className="text-faint">–</span>
+                  )}
                 </td>
                 <td className="px-3 py-2.5 text-text-2">{r.waehrung ?? "–"}</td>
                 <td className="px-3 py-2.5">
